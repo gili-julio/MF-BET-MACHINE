@@ -20,7 +20,8 @@ VARIABLES
     aposta_evento,
     aposta_valor,
     aposta_palpite,
-    status_aposta_map
+    status_aposta_map,
+    status_conta
 
 INVARIANT
     /* Tipagem Variáveis de Estado (Casa e Usuários) */
@@ -50,7 +51,8 @@ INVARIANT
     aposta_evento : apostas --> eventos &
     aposta_valor : apostas --> NAT1 & /* NAT1 garante que aposta > 0 */
     aposta_palpite : apostas --> OPCAO_RESULTADO &
-    status_aposta_map : apostas --> STATUS_APOSTA
+    status_aposta_map : apostas --> STATUS_APOSTA &
+    status_conta : usuarios --> STATUS_CONTA
 
 INITIALISATION
     saldo_casa := 0 ||
@@ -64,7 +66,8 @@ INITIALISATION
     aposta_evento := {} ||
     aposta_valor := {} ||
     aposta_palpite := {} ||
-    status_aposta_map := {}
+    status_aposta_map := {} ||
+    status_conta := {}
 
 OPERATIONS
 
@@ -86,7 +89,8 @@ OPERATIONS
             saldo_usuario(user_id) := 0 ||
             status := sucesso
         ELSE
-            status := erro_limite_excedido
+            status := erro_limite_excedido ||
+            status_conta(user_id) := pendente_documento
         END
     END;
 
@@ -94,8 +98,12 @@ OPERATIONS
     PRE user_id : NAT & valor : NAT
     THEN
         IF (user_id : usuarios) THEN
-            saldo_usuario(user_id) := saldo_usuario(user_id) + valor ||
-            status := sucesso
+            IF (status_conta(user_id) = ativa or status_conta(user_id) = pendente_documento) THEN
+                saldo_usuario(user_id) := saldo_usuario(user_id) + valor ||
+                status := sucesso
+            ELSE
+                status := erro_conta_bloqueada
+            END
         ELSE
             status := erro_nao_encontrado
         END
@@ -105,11 +113,15 @@ OPERATIONS
     PRE user_id : NAT & valor : NAT
     THEN
         IF (user_id : usuarios) THEN
-            IF (saldo_usuario(user_id) >= valor) THEN
-                saldo_usuario(user_id) := saldo_usuario(user_id) - valor ||
-                status := sucesso
+            IF (status_conta(user_id) = ativa) THEN
+                IF (saldo_usuario(user_id) >= valor) THEN
+                    saldo_usuario(user_id) := saldo_usuario(user_id) - valor ||
+                    status := sucesso
+                ELSE
+                    status := erro_saldo_insuficiente
+                END
             ELSE
-                status := erro_saldo_insuficiente
+                status := erro_conta_pendente_verificacao /* Opcional: pode manter erro_conta_bloqueada se preferir generalizar */
             END
         ELSE
             status := erro_nao_encontrado
@@ -152,26 +164,30 @@ OPERATIONS
         IF (aposta_id /: apostas & card(apostas) < MAX_APOSTAS &
             user_id : usuarios & evento_id : eventos) THEN
             
-            IF (status_evento(evento_id) = aberto & valor >= APOSTA_MINIMA) THEN
-                IF (saldo_usuario(user_id) >= valor) THEN
-                    /* Registra os dados da Aposta */
-                    apostas := apostas \/ {aposta_id} ||
-                    aposta_usuario(aposta_id) := user_id ||
-                    aposta_evento(aposta_id) := evento_id ||
-                    aposta_valor(aposta_id) := valor ||
-                    aposta_palpite(aposta_id) := palpite ||
-                    status_aposta_map(aposta_id) := pendente ||
-                    
-                    /* Fluxo Financeiro Simultâneo */
-                    saldo_usuario(user_id) := saldo_usuario(user_id) - valor ||
-                    arrecadacao_evento(evento_id) := arrecadacao_evento(evento_id) + valor ||
-                    
-                    status := sucesso
+            IF (status_conta(user_id) = ativa or status_conta(user_id) = pendente_documento) THEN
+                IF (status_evento(evento_id) = aberto & valor >= APOSTA_MINIMA) THEN
+                    IF (saldo_usuario(user_id) >= valor) THEN
+                        /* Registra os dados da Aposta */
+                        apostas := apostas \/ {aposta_id} ||
+                        aposta_usuario(aposta_id) := user_id ||
+                        aposta_evento(aposta_id) := evento_id ||
+                        aposta_valor(aposta_id) := valor ||
+                        aposta_palpite(aposta_id) := palpite ||
+                        status_aposta_map(aposta_id) := pendente ||
+                        
+                        /* Fluxo Financeiro Simultâneo */
+                        saldo_usuario(user_id) := saldo_usuario(user_id) - valor ||
+                        arrecadacao_evento(evento_id) := arrecadacao_evento(evento_id) + valor ||
+                        
+                        status := sucesso
+                    ELSE
+                        status := erro_saldo_insuficiente
+                    END
                 ELSE
-                    status := erro_saldo_insuficiente
+                    status := erro_evento_invalido
                 END
             ELSE
-                status := erro_evento_invalido
+                status := erro_conta_bloqueada
             END
         ELSE
             status := erro_nao_encontrado
@@ -266,17 +282,21 @@ OPERATIONS
     PRE aposta_id : NAT & premio_calculado : NAT
     THEN
         IF (aposta_id : apostas) THEN
-            IF (status_evento(aposta_evento(aposta_id)) = finalizado) THEN
-                IF (status_aposta_map(aposta_id) = pendente) THEN
-                    /* O usuário recebe sua parte e a aposta é marcada como paga */
-                    saldo_usuario(aposta_usuario(aposta_id)) := saldo_usuario(aposta_usuario(aposta_id)) + premio_calculado ||
-                    status_aposta_map(aposta_id) := ganha ||
-                    status := sucesso
+            IF (status_conta(aposta_usuario(aposta_id)) = ativa) THEN
+                IF (status_evento(aposta_evento(aposta_id)) = finalizado) THEN
+                    IF (status_aposta_map(aposta_id) = pendente) THEN
+                        /* O usuário recebe sua parte e a aposta é marcada como paga */
+                        saldo_usuario(aposta_usuario(aposta_id)) := saldo_usuario(aposta_usuario(aposta_id)) + premio_calculado ||
+                        status_aposta_map(aposta_id) := ganha ||
+                        status := sucesso
+                    ELSE
+                        status := erro_estado_invalido /* Já foi paga ou perdida */
+                    END
                 ELSE
-                    status := erro_estado_invalido /* Já foi paga ou perdida */
+                    status := erro_evento_invalido /* Evento ainda não acabou */
                 END
             ELSE
-                status := erro_evento_invalido /* Evento ainda não acabou */
+                status := erro_conta_pendente_verificacao
             END
         ELSE
             status := erro_nao_encontrado
@@ -312,6 +332,57 @@ OPERATIONS
             status := sucesso
         ELSE
             status := erro_saldo_insuficiente
+        END
+    END;
+    
+    /* --- Operações Avançadas de Segurança, Auditoria e KYC --- */
+
+    status <-- verificar_documento_kyc(user_id) =
+    PRE user_id : NAT
+    THEN
+        IF (user_id : usuarios) THEN
+            /* O administrador aprova os documentos e ativa a conta */
+            IF (status_conta(user_id) = pendente_documento or status_conta(user_id) = suspensa) THEN
+                status_conta(user_id) := ativa ||
+                status := sucesso
+            ELSE
+                status := erro_estado_invalido
+            END
+        ELSE
+            status := erro_nao_encontrado
+        END
+    END;
+
+    status <-- colocar_conta_em_analise(user_id) =
+    PRE user_id : NAT
+    THEN
+        IF (user_id : usuarios) THEN
+            /* Impede que contas banidas sejam colocadas em análise (banimento é definitivo) */
+            IF (status_conta(user_id) /= banida) THEN
+                status_conta(user_id) := sob_analise ||
+                status := sucesso
+            ELSE
+                status := erro_estado_invalido
+            END
+        ELSE
+            status := erro_nao_encontrado
+        END
+    END;
+
+    status <-- banir_usuario_fraude(user_id) =
+    PRE user_id : NAT
+    THEN
+        IF (user_id : usuarios) THEN
+            /* A lei de ferro: O banimento é um estado final. 
+               Uma vez banida, a conta nunca mais sai desse estado na máquina. */
+            IF (status_conta(user_id) /= banida) THEN
+                status_conta(user_id) := banida ||
+                status := sucesso
+            ELSE
+                status := erro_estado_invalido
+            END
+        ELSE
+            status := erro_nao_encontrado
         END
     END
 END
