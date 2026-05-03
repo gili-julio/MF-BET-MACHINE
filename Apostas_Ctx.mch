@@ -6,8 +6,8 @@ MACHINE
     Apostas_Ctx
 
 SETS
-    STATUS_EVENTO = {agendado, aberto, finalizado, cancelado};
-    STATUS_APOSTA = {pendente, ganha, perdida, devolvida};
+    STATUS_EVENTO = {agendado, aberto, finalizado, cancelado, suspenso};
+    STATUS_APOSTA = {pendente, ganha, perdida, devolvida, revogada_usuario};
     OPCAO_RESULTADO = {vitoria_A, empate, vitoria_B};
     STATUS_RETORNO = {sucesso, erro_saldo_insuficiente, erro_evento_invalido, erro_limite_excedido, erro_nao_encontrado, erro_estado_invalido}
 

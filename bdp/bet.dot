@@ -1,6 +1,0 @@
-digraph {
-Apostas [ label=" Apostas " shape= box ]
-Apostas_Ctx [ label=" Apostas_Ctx " shape= box ]
-
-"Apostas" -> "Apostas_Ctx" [style= dotted ]
-}

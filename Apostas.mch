@@ -178,6 +178,35 @@ OPERATIONS
         END
     END;
     
+    status <-- revogar_aposta(aposta_id) =
+    PRE aposta_id : NAT
+    THEN
+        IF (aposta_id : apostas) THEN
+            /* Só pode cancelar se o evento ainda estiver aberto ou agendado e a aposta pendente */
+            IF (status_evento(aposta_evento(aposta_id)) = aberto or status_evento(aposta_evento(aposta_id)) = agendado) THEN
+                IF (status_aposta_map(aposta_id) = pendente) THEN
+                    
+                    /* Devolve o dinheiro para o usuário */
+                    saldo_usuario(aposta_usuario(aposta_id)) := saldo_usuario(aposta_usuario(aposta_id)) + aposta_valor(aposta_id) ||
+                    
+                    /* Retira o dinheiro do bolo do evento */
+                    arrecadacao_evento(aposta_evento(aposta_id)) := arrecadacao_evento(aposta_evento(aposta_id)) - aposta_valor(aposta_id) ||
+                    
+                    /* Atualiza o status da aposta para não ser mais cobrada */
+                    status_aposta_map(aposta_id) := revogada_usuario ||
+                    
+                    status := sucesso
+                ELSE
+                    status := erro_estado_invalido
+                END
+            ELSE
+                status := erro_evento_invalido
+            END
+        ELSE
+            status := erro_nao_encontrado
+        END
+    END;
+    
     status <-- finalizar_evento(evento_id, resultado_vencedor) =
     PRE evento_id : NAT & resultado_vencedor : OPCAO_RESULTADO
     THEN
@@ -200,6 +229,36 @@ OPERATIONS
             status := sucesso
         ELSE
             status := erro_evento_invalido
+        END
+    END;
+    
+    status <-- suspender_evento(evento_id) =
+    PRE evento_id : NAT
+    THEN
+        IF (evento_id : eventos) THEN
+            IF (status_evento(evento_id) = aberto) THEN
+                status_evento(evento_id) := suspenso ||
+                status := sucesso
+            ELSE
+                status := erro_estado_invalido
+            END
+        ELSE
+            status := erro_nao_encontrado
+        END
+    END;
+
+    status <-- retomar_evento(evento_id) =
+    PRE evento_id : NAT
+    THEN
+        IF (evento_id : eventos) THEN
+            IF (status_evento(evento_id) = suspenso) THEN
+                status_evento(evento_id) := aberto ||
+                status := sucesso
+            ELSE
+                status := erro_estado_invalido
+            END
+        ELSE
+            status := erro_nao_encontrado
         END
     END;
     
@@ -242,6 +301,17 @@ OPERATIONS
             END
         ELSE
             status := erro_nao_encontrado
+        END
+    END;
+    
+    status <-- sacar_lucro_casa(valor) =
+    PRE valor : NAT
+    THEN
+        IF (saldo_casa >= valor) THEN
+            saldo_casa := saldo_casa - valor ||
+            status := sucesso
+        ELSE
+            status := erro_saldo_insuficiente
         END
     END
 END
