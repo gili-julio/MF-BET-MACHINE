@@ -8,6 +8,7 @@ MACHINE
 SEES
     Apostas_Ctx
 
+
 VARIABLES
     saldo_casa,
     usuarios,
