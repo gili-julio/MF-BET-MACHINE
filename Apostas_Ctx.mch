@@ -12,22 +12,10 @@ SETS
     
     OPCAO_RESULTADO = {vitoria_A, empate, vitoria_B, indefinido};
     
-    STATUS_RETORNO = {
-        sucesso, 
-        erro_saldo_insuficiente,
-        erro_evento_invalido, 
-        erro_limite_excedido, 
-        erro_nao_encontrado, 
-        erro_estado_invalido,
-        erro_conta_bloqueada, 
-        erro_conta_pendente_verificacao
-    };
-    
     STATUS_CONTA = {
-        pendente_documento, 
-        ativa, sob_analise, 
-        suspensa, 
-        banida
+        ativa, 
+        sob_analise, 
+        suspensa
     }
 
 CONSTANTS
