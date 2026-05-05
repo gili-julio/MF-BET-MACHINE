@@ -217,9 +217,18 @@ OPERATIONS
         resultado_vencedor /= indefinido &
         status_evento(evento_id) = aberto
     THEN
-        saldo_casa := saldo_casa + ((arrecadacao_evento(evento_id) * TAXA_CASA) / 100) ||
-        status_evento(evento_id) := finalizado ||
-        resultado_evento(evento_id) := resultado_vencedor
+        /* Verifica se EXISTE (#) pelo menos uma aposta neste evento com o palpite vencedor */
+        IF (#xx.(xx : apostas & aposta_evento(xx) = evento_id & aposta_palpite(xx) = resultado_vencedor)) THEN
+            /* Cenário Normal: Há vencedores. A casa recolhe apenas a sua comissão blindada. */
+            saldo_casa := saldo_casa + ((arrecadacao_evento(evento_id) * TAXA_CASA) / 100) ||
+            status_evento(evento_id) := finalizado ||
+            resultado_evento(evento_id) := resultado_vencedor
+        ELSE
+            /* Cenário "Zebra": Ninguém acertou o palpite. A casa embolsa o bolo INTEIRO. */
+            saldo_casa := saldo_casa + arrecadacao_evento(evento_id) ||
+            status_evento(evento_id) := finalizado ||
+            resultado_evento(evento_id) := resultado_vencedor
+        END
     END;
 
     cancelar_evento(evento_id) =
@@ -249,19 +258,26 @@ OPERATIONS
         status_evento(evento_id) := aberto
     END;
     
-    resgatar_premio(aposta_id, premio_calculado) = 
+    resgatar_premio(aposta_id) = 
     PRE 
         aposta_id : NAT &
         aposta_id : apostas & 
-        premio_calculado : NAT &
         status_conta(aposta_usuario(aposta_id)) = ativa &
         status_evento(aposta_evento(aposta_id)) = finalizado &
         status_aposta_map(aposta_id) = pendente
     THEN 
         IF (aposta_palpite(aposta_id) = resultado_evento(aposta_evento(aposta_id))) THEN
-            /* O usuário acertou */ 
-            saldo_usuario(aposta_usuario(aposta_id)) := saldo_usuario(aposta_usuario(aposta_id)) + premio_calculado || 
-            status_aposta_map(aposta_id) := ganha
+            /* O usuário acertou: Cálculo interno utilizando SIGMA para as apostas vencedoras */ 
+            ANY montante_liquido, total_vencedor WHERE
+                montante_liquido : NAT &
+                total_vencedor : NAT1 &
+                montante_liquido = arrecadacao_evento(aposta_evento(aposta_id)) - ((arrecadacao_evento(aposta_evento(aposta_id)) * TAXA_CASA) / 100) &
+                total_vencedor = SIGMA(xx).(xx : apostas & aposta_evento(xx) = aposta_evento(aposta_id) & aposta_palpite(xx) = resultado_evento(aposta_evento(aposta_id)) | aposta_valor(xx))
+            THEN
+                /* (Valor Apostado * Montante Líquido) / Total Apostado nas Vencedoras */
+                saldo_usuario(aposta_usuario(aposta_id)) := saldo_usuario(aposta_usuario(aposta_id)) + ((aposta_valor(aposta_id) * montante_liquido) / total_vencedor) || 
+                status_aposta_map(aposta_id) := ganha
+            END
         ELSE
             /* O usuário errou */
             status_aposta_map(aposta_id) := perdida
@@ -287,7 +303,7 @@ OPERATIONS
         saldo_casa := saldo_casa - valor
     END;
     
-    /* --- Operações Avançadas de Segurança e Auditoria --- */
+    /* --- Operações de Segurança e Auditoria --- */
 
     ativar_usuario(user_id) =
     PRE 
