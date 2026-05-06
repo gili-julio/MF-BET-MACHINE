@@ -3,7 +3,7 @@ The bet machine write in B for discipline Métodos Formais
 
 # 📘 Documentação Técnica: Máquina Principal (`Apostas.mch`)
 
-Este documento detalha o estado, as regras de segurança e as operações do sistema formal de Casa de Apostas desenvolvido em Método B. A arquitetura adota o paradigma de **Design by Contract (Projeto por Contrato)**, onde a máquina abstrata garante a integridade matemática do estado exigindo o cumprimento estrito de Pré-Condições (`PRE`) antes de liberar qualquer operação.
+Este documento detalha o estado, as regras de segurança e as operações do sistema formal de Casa de Apostas desenvolvido em Método B. A arquitetura adota o paradigma de **Design by Contract (Projeto por Contrato)** e implementa **Controle de Acesso Baseado em Funções (RBAC)**, garantindo a integridade matemática do estado e a segregação de privilégios estrutural.
 
 ---
 
@@ -16,10 +16,12 @@ As variáveis representam os dados que o sistema armazena e manipula na memória
 | `saldo_casa` | Escalar | Lucro total da plataforma acumulado através da retenção de taxas. |
 | `usuarios` | Conjunto | IDs numéricos de todos os usuários cadastrados. |
 | `saldo_usuario` | Função (`-->`) | Mapeia o ID de cada usuário ao valor atual da sua carteira. |
+| `is_admin` | Função (`-->`) | Mapeia se o usuário é um Administrador (`TRUE`) ou Comum (`FALSE`). |
 | `status_conta` | Função (`-->`) | Mapeia o ID do usuário ao seu nível de permissão (`ativa`, `sob_analise`, `suspensa`). |
 | `eventos` | Conjunto | IDs numéricos de todos os eventos esportivos criados. |
 | `status_evento` | Função (`-->`) | Mapeia cada evento ao seu estado (`agendado`, `aberto`, `suspenso`, `finalizado`, `cancelado`). |
 | `arrecadacao_evento` | Função (`-->`) | O "Bolo" (montante total) arrecadado pelas apostas em um evento. |
+| `resultado_evento` | Função (`-->`) | Mapeia cada evento finalizado ao seu resultado vencedor. |
 | `apostas` | Conjunto | IDs numéricos de todos os bilhetes de aposta registrados. |
 | `aposta_usuario` | Função (`-->`) | Vincula o ID de uma aposta ao ID do usuário dono. |
 | `aposta_evento` | Função (`-->`) | Vincula o ID de uma aposta ao ID do evento alvo. |
@@ -27,65 +29,66 @@ As variáveis representam os dados que o sistema armazena e manipula na memória
 | `aposta_palpite` | Função (`-->`) | Escolha de resultado feita na aposta (vitória, empate, etc.). |
 | `status_aposta_map`| Função (`-->`) | Estado do bilhete (`pendente`, `ganha`, `perdida`, `devolvida`, `revogada_usuario`). |
 
-*(Nota: Variáveis de contadores auto-incrementais como `contador_aposta` garantem a exclusividade de IDs gerados dinamicamente).*
+*(Nota: Variáveis de contadores auto-incrementais garantem a exclusividade de IDs gerados dinamicamente).*
 
 ---
 
-## 2. Invariantes de Segurança (Regras de Negócio)
+## 2. Invariantes de Segurança (Regras de Negócio Críticas)
 
 Os invariantes são as propriedades matemáticas blindadas do sistema. O Atelier-B atesta que o software nunca entrará em um estado que quebre essas leis:
 
-*   **Tipagem e Limites de Capacidade:** O sistema trava a quantidade máxima de entidades (`card <= MAX`), prevenindo estouro de memória.
-*   **Solvência da Casa de Apostas (`saldo_casa : NAT`):** Obriga o saldo da casa a pertencer aos Números Naturais. Prova matematicamente que a plataforma nunca operará no vermelho.
-*   **Consistência Financeira (`saldo_usuario : usuarios --> NAT`):** É impossível que um usuário saque ou aposte um valor maior do que possui.
-*   **Integridade dos Eventos (`arrecadacao_evento(ev) >= 0`):** O montante de um evento nunca pode ser negativo.
-*   **Integridade das Apostas (`aposta_valor : apostas --> NAT1`):** A exclusão do zero (`NAT1`) prova que não existem apostas gratuitas; toda aposta exige fundos reais.
-*   **Regras Universais de Resolução:** Uma aposta só pode ser designada como `ganha` ou `perdida` se estiver matematicamente alinhada com o resultado final do evento.
+1. **Solvência da Casa de Apostas (`saldo_casa : NAT`):** Prova matematicamente que a plataforma nunca operará no vermelho.
+2. **Consistência Financeira (`saldo_usuario : usuarios --> NAT`):** É impossível que um usuário possua saldo negativo.
+3. **Regra de Vitória e Derrota:** Uma aposta `ganha` ou `perdida` deve estar matematicamente alinhada com o `resultado_evento`.
+4. **Integridade Temporal:** O resultado de um evento que não está `finalizado` deve ser rigorosamente `indefinido`. Uma aposta só pode ser `pendente` se o evento estiver `agendado` ou `aberto`.
+5. **Completude do Resultado:** Todo evento `finalizado` obrigatoriamente possui um resultado válido.
+6. **Coerência de Resolução:** Apostas só assumem o estado de `ganha` ou `perdida` se o evento já foi encerrado.
+7. **Coerência de Estorno:** Uma aposta só pode ser marcada como `devolvida` se o evento correspondente foi `cancelado`.
+8. **Lastro Financeiro Totalizador (Prova de Ouro):** Enquanto o evento estiver aberto ou suspenso, a `arrecadacao_evento` é exatamente igual ao somatório (`SIGMA`) de todas as apostas pendentes vinculadas a ele. Nenhum centavo é criado ou destruído.
 
 ---
 
 ## 3. Operações do Sistema
 
-As operações alteram o estado caso as restrições da cláusula `PRE` sejam plenamente satisfeitas. 
+As operações alteram o estado caso as restrições da cláusula `PRE` (incluindo o papel do usuário) sejam plenamente satisfeitas.
 
-### 💰 Operações de Caixa e Gestão
+### 👤 Gestão de Usuários (Administradores)
 | Operação | Parâmetros | Descrição |
 | :--- | :--- | :--- |
-| `aportar_saldo_casa` | `valor` | Injeta capital inicial ou de emergência diretamente no cofre da casa. |
-| `sacar_lucro_casa` | `valor` | O administrador da plataforma retira lucros acumulados do `saldo_casa`. |
-| `cadastrar_usuario` | *(Nenhum)* | Insere um novo usuário, inicializa sua carteira zerada, ativa a conta e retorna o ID gerado. |
-| `depositar` | `user_id, valor` | Adiciona fundos à carteira. **Exige conta `ativa`.** |
-| `sacar` | `user_id, valor` | Deduz fundos da carteira. **Exige conta `ativa` e saldo suficiente.** |
+| `cadastrar_usuario` | `is_admin_param` | Cria um usuário, define seu perfil (`TRUE` para Admin, `FALSE` para Comum) e retorna o ID. |
+| `downgrade_usuario` | `admin_id, target_user_id` | Rebaixa um Administrador para Usuário Comum. Um Admin não pode rebaixar a si mesmo. |
+| `upgrade_usuario` | `admin_id, target_user_id` | Promove um Usuário Comum a Administrador. |
+| `ativar_usuario` | `admin_id, target_user_id` | Restaura a conta para `ativa`, liberando fluxos de caixa e apostas. |
+| `colocar_conta_em_analise`| `admin_id, target_user_id` | Altera a conta para `sob_analise` para investigar transações atípicas. |
+| `suspender_usuario` | `admin_id, target_user_id` | Congela a conta. Impede interações com eventos e saques. |
 
-### 🏆 Operações de Eventos e Arrecadação
-| Operação | Parâmetros | Descrição |
-| :--- | :--- | :--- |
-| `criar_evento` | *(Nenhum)* | Registra um evento como `agendado`, zera o bolo e retorna o ID. |
-| `abrir_evento` | `evento_id` | Muda o status para `aberto`, habilitando o recebimento de apostas. |
-| `suspender_evento` | `evento_id` | Bloqueia temporariamente um evento `aberto` (ex: revisão do VAR). |
-| `retomar_evento` | `evento_id` | Desbloqueia um evento `suspenso`, voltando-o para `aberto`. |
-| `realizar_aposta` | `user_id, evento_id, palpite, valor` | Vincula a aposta, debita do usuário e soma ao "Bolo" do evento. **Exige conta `ativa`.** Retorna o ID do bilhete. |
-| `revogar_aposta` | `aposta_id` | Permite cancelar o bilhete antes do encerramento do evento. Devolve o dinheiro à carteira e subtrai do "Bolo". |
-| `finalizar_evento` | `evento_id, resultado_vencedor` | Encerra o evento. Calcula a `TAXA_CASA`. **Cenário Zebra:** Se ninguém acertar, a casa recolhe 100% do bolo; se houver vencedores, retém apenas a taxa administrativa. |
-| `cancelar_evento` | `evento_id` | Aborta o evento, marcando-o como `cancelado` para habilitar estornos completos. |
-
-### 💸 Operações de Liquidação (Padrão Pull)
-A arquitetura delega o resgate ao apostador, distribuindo a carga de forma descentralizada.
+### 🎰 Operações do Apostador (Usuários Comuns)
+*Todas as operações deste bloco exigem que o usuário seja dono da carteira/aposta, possua conta `ativa` e `is_admin = FALSE`.*
 
 | Operação | Parâmetros | Descrição |
 | :--- | :--- | :--- |
-| `resgatar_premio` | `aposta_id` | Vencedor resgata o prêmio. O rateio do bolo é calculado internamente pelo sistema via quantificador `SIGMA` (Totalizador). Errar o palpite altera o status para `perdida`. |
-| `resgatar_reembolso`| `aposta_id` | Devolve o valor exato apostado de volta à carteira caso o evento associado tenha sido cancelado. |
+| `depositar` | `user_id, valor` | Adiciona fundos à carteira do apostador. |
+| `sacar` | `user_id, valor` | Deduz fundos da carteira. Exige saldo suficiente. |
+| `realizar_aposta` | `user_id, evento_id, palpite, valor` | Vincula a aposta, debita do usuário e soma ao "Bolo" do evento. |
+| `revogar_aposta` | `user_id, aposta_id` | Direito de arrependimento antes do evento iniciar. Estorna os fundos e deduz do bolo do evento. |
+| `resgatar_reembolso`| `user_id, aposta_id` | **Modelo Pull:** O usuário resgata o valor apostado de volta à carteira caso o evento tenha sido cancelado pela casa. |
+| `consultar_saldo_usuario`| `user_id` | Retorna o saldo disponível na carteira. |
 
-### 🛡️ Operações de Segurança e Auditoria
+### 🏢 Operações da Plataforma (Administradores)
+*Todas as operações deste bloco exigem identificação e credencial `is_admin = TRUE`.*
+
 | Operação | Parâmetros | Descrição |
 | :--- | :--- | :--- |
-| `ativar_usuario` | `user_id` | Restaura as permissões de uma conta para `ativa`, liberando fluxos de caixa e apostas. |
-| `colocar_conta_em_analise`| `user_id` | Altera o status para `sob_analise` a fim de investigar transações atípicas. |
-| `suspender_usuario` | `user_id` | Altera o status para `suspensa`. Congela todos os fundos do usuário, bloqueando interações com eventos e saques. |
+| `aportar_saldo_casa` | `admin_id, valor` | Injeta capital diretamente no cofre da casa. |
+| `sacar_lucro_casa` | `admin_id, valor` | Retira lucros acumulados do `saldo_casa`. |
+| `criar_evento` | `admin_id` | Registra um evento `agendado`, zera o bolo e retorna o ID. |
+| `abrir_evento` | `admin_id, evento_id` | Habilita o recebimento de apostas no evento. |
+| `suspender_evento` | `admin_id, evento_id` | Bloqueia temporariamente um evento `aberto` (ex: revisão do VAR). |
+| `retomar_evento` | `admin_id, evento_id` | Desbloqueia um evento `suspenso`. |
+| `cancelar_evento` | `admin_id, evento_id` | Aborta o evento, marcando-o como `cancelado` para habilitar os estornos dos usuários. |
+| `consultar_saldo_casa` | `admin_id` | Consulta o saldo do cofre da plataforma. |
 
-### 📊 Operações de Consulta
+### ⚡ Liquidação Automatizada de Prêmios
 | Operação | Parâmetros | Descrição |
 | :--- | :--- | :--- |
-| `consultar_saldo_casa` | *(Nenhum)* | Retorna o saldo total armazenado no cofre da plataforma. |
-| `consultar_saldo_usuario`| `user_id` | Retorna o valor atual disponível na carteira de um usuário específico. |
+| `finalizar_evento` | `admin_id, evento_id, resultado_vencedor` | Encerra o evento. O rateio do bolo é calculado internamente pelo sistema via quantificador `SIGMA`. **Pagamento em Massa:** A plataforma distribui automaticamente os lucros diretamente nas carteiras das apostas vencedoras via Função Lambda (`<+` e `%uu`), eliminando a necessidade de os usuários solicitarem saque de prêmios. Em caso de "Zebra" (nenhum ganhador), a casa retém o bolo total. |
