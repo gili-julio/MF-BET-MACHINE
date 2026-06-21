@@ -1,13 +1,13 @@
 /* Apostas
  * Author: Superframe Force
  * Creation date: 01/05/2026
+ * Ajustado para sistema de odds
  */
 MACHINE
     Apostas
 
 SEES
     Apostas_Ctx
-
 
 VARIABLES
     saldo_casa,
@@ -17,11 +17,13 @@ VARIABLES
     eventos,
     status_evento,
     arrecadacao_evento,
+    odd_evento,
     apostas,
     aposta_usuario,
     aposta_evento,
     aposta_valor,
     aposta_palpite,
+    aposta_odd,
     status_aposta_map,
     status_conta,
     resultado_evento,
@@ -30,7 +32,7 @@ VARIABLES
     contador_usuario
     
 INVARIANT
-    /* Tipagem Variáveis de Estado */
+    /* Tipagem Variaveis de Estado */
     saldo_casa : NAT &
     usuarios <: NAT &
     card(usuarios) <= MAX_USERS &
@@ -47,11 +49,12 @@ INVARIANT
     contador_usuario : NAT1 & 
     contador_usuario <= MAX_USERS + 1 &
 
-    /* Tipagem Variáveis de Eventos */
+    /* Tipagem Variaveis de Eventos */
     eventos <: NAT &
     card(eventos) <= MAX_EVENTS &
     status_evento : eventos --> STATUS_EVENTO &
     arrecadacao_evento : eventos --> NAT &
+    odd_evento : eventos --> ODD_MINIMA..ODD_MAXIMA &
     
     /* Tipagem do Resultado */
     resultado_evento : eventos --> OPCAO_RESULTADO &
@@ -63,40 +66,38 @@ INVARIANT
     aposta_evento : apostas --> eventos &
     aposta_valor : apostas --> NAT1 & 
     aposta_palpite : apostas --> OPCAO_RESULTADO &
+    aposta_odd : apostas --> ODD_MINIMA..ODD_MAXIMA &
     status_aposta_map : apostas --> STATUS_APOSTA &
     
-    /* Regras de Negócio */
-    !ev.(ev : eventos => arrecadacao_evento(ev) >= 0) &
-    
-    /* 1. Regra de Vitória */
-    !(ap).(ap : apostas & status_aposta_map(ap) = ganha => 
-           aposta_evento(ap) : dom(resultado_evento) & 
-           aposta_palpite(ap) = resultado_evento(aposta_evento(ap))) &
+    /* Regras de Negocio sem PARA TODO explicito */
 
-    /* 2. Regra de Derrota */
-    !(ap).(ap : apostas & status_aposta_map(ap) = perdida => 
-           aposta_evento(ap) : dom(resultado_evento) & 
-           aposta_palpite(ap) /= resultado_evento(aposta_evento(ap))) &
+    /* 1. Regra de Vitoria: aposta ganha tem palpite igual ao resultado do evento */
+    (status_aposta_map~[{ganha}] <| aposta_palpite) =
+        (status_aposta_map~[{ganha}] <| (aposta_evento ; resultado_evento)) &
 
-    /* 3. Integridade Temporal de Eventos e Resultados */
-    !(ev).(ev : eventos & status_evento(ev) /= finalizado => resultado_evento(ev) = indefinido) &
+    /* 2. Regra de Derrota: aposta perdida nao tem palpite igual ao resultado do evento */
+    ((status_aposta_map~[{perdida}] <| aposta_palpite) /\
+        (status_aposta_map~[{perdida}] <| (aposta_evento ; resultado_evento))) = {} &
+
+    /* 3. Evento nao finalizado tem resultado indefinido */
+    ran(status_evento~[STATUS_EVENTO - {finalizado}] <| resultado_evento) <: {indefinido} &
            
-    /* 4. Integridade das Apostas */
-    !(ap).(ap : apostas & status_aposta_map(ap) = pendente => 
-           status_evento(aposta_evento(ap)) /= agendado) &
+    /* 4. Integridade das Apostas: pendente apenas em evento aberto, suspenso ou cancelado */
+    status_evento[aposta_evento[status_aposta_map~[{pendente}]]] <: {aberto, suspenso, cancelado} &
        
-    /* 5. Todo evento finalizado tem um resultado válido */
-    !(ev).(ev : eventos & status_evento(ev) = finalizado => resultado_evento(ev) /= indefinido) &
+    /* 5. Todo evento finalizado tem resultado valido */
+    ran(status_evento~[{finalizado}] <| resultado_evento) <: OPCAO_RESULTADO - {indefinido} &
     
-    /* 6. Apostas só podem estar ganhas ou perdidas se o evento acabou */
-    !(ap).(ap : apostas & status_aposta_map(ap) : {ganha, perdida} => status_evento(aposta_evento(ap)) = finalizado) &
+    /* 6. Apostas ganhas ou perdidas apenas se o evento acabou */
+    status_evento[aposta_evento[status_aposta_map~[{ganha, perdida}]]] <: {finalizado} &
     
-    /* 7. Uma aposta só é devolvida se o evento foi cancelado */
-    !(ap).(ap : apostas & status_aposta_map(ap) = devolvida => status_evento(aposta_evento(ap)) = cancelado) &
+    /* 7. Uma aposta so e devolvida se o evento foi cancelado */
+    status_evento[aposta_evento[status_aposta_map~[{devolvida}]]] <: {cancelado} &
     
-    /* 8. A arrecadação do evento deve bater com a soma das apostas ativas */
-    !(ev).(ev : eventos & status_evento(ev) : {aberto, suspenso} => 
-           arrecadacao_evento(ev) = SIGMA(ap).(ap : apostas & aposta_evento(ap) = ev & status_aposta_map(ap) = pendente | aposta_valor(ap)))
+    /* 8. A arrecadacao de eventos abertos ou suspensos deve bater com a soma das apostas pendentes */
+    ({ev | ev : eventos & status_evento(ev) : {aberto, suspenso}} <| arrecadacao_evento) =
+        %ev.(ev : {evv | evv : eventos & status_evento(evv) : {aberto, suspenso}} |
+            SIGMA(ap).(ap : apostas & aposta_evento(ap) = ev & status_aposta_map(ap) = pendente | aposta_valor(ap)))
 
 INITIALISATION
     saldo_casa := 0 ||
@@ -106,11 +107,13 @@ INITIALISATION
     eventos := {} ||
     status_evento := {} ||
     arrecadacao_evento := {} ||
+    odd_evento := {} ||
     apostas := {} ||
     aposta_usuario := {} ||
     aposta_evento := {} ||
     aposta_valor := {} ||
     aposta_palpite := {} ||
+    aposta_odd := {} ||
     status_aposta_map := {} ||
     status_conta := {} ||
     resultado_evento := {} ||
@@ -120,7 +123,7 @@ INITIALISATION
     
 OPERATIONS
 
-    /* --- GESTÃO DE USUÁRIOS E PERFIS --- */
+    /* --- GESTAO DE USUARIOS E PERFIS --- */
 
     novo_user_id <-- cadastrar_usuario(is_admin_param) = 
     PRE 
@@ -143,7 +146,7 @@ OPERATIONS
         & target_user_id : NAT 
         & target_user_id : usuarios 
         & is_admin(target_user_id) = TRUE 
-        & target_user_id /= admin_id /* Um admin não pode rebaixar a si mesmo */
+        & target_user_id /= admin_id /* Um admin nao pode rebaixar a si mesmo */
     THEN
         is_admin(target_user_id) := FALSE
     END;
@@ -196,14 +199,14 @@ OPERATIONS
         status_conta(target_user_id) := suspensa
     END;
 
-    /* --- OPERAÇÕES DO APOSTADOR --- */
+    /* --- OPERACOES DO APOSTADOR --- */
 
     depositar(user_id, valor) =
     PRE 
         user_id : NAT 
         & user_id : usuarios 
         & is_admin(user_id) = FALSE 
-        & valor : NAT 
+        & valor : NAT1 
         & status_conta(user_id) = ativa
         & saldo_usuario(user_id) + valor : NAT
     THEN
@@ -215,7 +218,7 @@ OPERATIONS
         user_id : NAT 
         & user_id : usuarios 
         & is_admin(user_id) = FALSE 
-        & valor : NAT 
+        & valor : NAT1 
         & status_conta(user_id) = ativa 
         & saldo_usuario(user_id) >= valor
     THEN
@@ -231,7 +234,7 @@ OPERATIONS
         & evento_id : eventos 
         & palpite : OPCAO_RESULTADO 
         & palpite /= indefinido 
-        & valor : NAT 
+        & valor : NAT1 
         & valor >= APOSTA_MINIMA 
         & contador_aposta <= MAX_APOSTAS 
         & status_conta(user_id) = ativa 
@@ -243,6 +246,7 @@ OPERATIONS
         aposta_evento(contador_aposta) := evento_id || 
         aposta_valor(contador_aposta) := valor || 
         aposta_palpite(contador_aposta) := palpite || 
+        aposta_odd(contador_aposta) := odd_evento(evento_id) ||
         status_aposta_map(contador_aposta) := pendente || 
         
         saldo_usuario(user_id) := saldo_usuario(user_id) - valor || 
@@ -260,7 +264,7 @@ OPERATIONS
         & aposta_id : NAT 
         & aposta_id : apostas 
         & aposta_usuario(aposta_id) = user_id 
-        & (status_evento(aposta_evento(aposta_id)) = aberto or status_evento(aposta_evento(aposta_id)) = agendado) 
+        & status_evento(aposta_evento(aposta_id)) : {aberto, suspenso}
         & status_aposta_map(aposta_id) = pendente
     THEN
         saldo_usuario(user_id) := saldo_usuario(user_id) + aposta_valor(aposta_id) ||
@@ -292,14 +296,30 @@ OPERATIONS
         saldo_atual := saldo_usuario(user_id)
     END;
 
-    /* --- OPERAÇÕES DO ADMIN --- */
+    odd_atual <-- consultar_odd_evento(evento_id) =
+    PRE
+        evento_id : NAT
+        & evento_id : eventos
+    THEN
+        odd_atual := odd_evento(evento_id)
+    END;
+
+    odd_salva <-- consultar_odd_aposta(aposta_id) =
+    PRE
+        aposta_id : NAT
+        & aposta_id : apostas
+    THEN
+        odd_salva := aposta_odd(aposta_id)
+    END;
+
+    /* --- OPERACOES DO ADMIN --- */
 
     aportar_saldo_casa(admin_id, valor) =
     PRE 
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
-        & valor : NAT
+        & valor : NAT1
         & saldo_casa + valor : NAT
     THEN
         saldo_casa := saldo_casa + valor
@@ -310,7 +330,7 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
-        & valor : NAT 
+        & valor : NAT1 
         & saldo_casa >= valor
     THEN
         saldo_casa := saldo_casa - valor
@@ -326,6 +346,7 @@ OPERATIONS
         eventos := eventos \/ {contador_evento} || 
         status_evento(contador_evento) := agendado || 
         arrecadacao_evento(contador_evento) := 0 || 
+        odd_evento(contador_evento) := ODD_PADRAO ||
         resultado_evento(contador_evento) := indefinido || 
         novo_evento_id := contador_evento ||
         contador_evento := contador_evento + 1
@@ -367,6 +388,19 @@ OPERATIONS
         status_evento(evento_id) := aberto
     END;
 
+    alterar_odd_evento(admin_id, evento_id, nova_odd) =
+    PRE
+        admin_id : NAT
+        & admin_id : usuarios
+        & is_admin(admin_id) = TRUE
+        & evento_id : NAT
+        & evento_id : eventos
+        & status_evento(evento_id) : {agendado, aberto, suspenso}
+        & nova_odd : ODD_MINIMA..ODD_MAXIMA
+    THEN
+        odd_evento(evento_id) := nova_odd
+    END;
+
     finalizar_evento(admin_id, evento_id, resultado_vencedor) =
     PRE 
         admin_id : NAT 
@@ -378,52 +412,31 @@ OPERATIONS
         & resultado_vencedor /= indefinido 
         & status_evento(evento_id) = aberto
     THEN
-        IF (
-                #xx.(xx : apostas & aposta_evento(xx) = evento_id 
-                    & aposta_palpite(xx) = resultado_vencedor)
-            ) THEN
-            /* Cenário em que há vencedores.  */
-            ANY montante_liquido, total_vencedor 
-            WHERE
-                montante_liquido : NAT 
-                & total_vencedor : NAT1 
-                & montante_liquido = arrecadacao_evento(evento_id) - ((arrecadacao_evento(evento_id) * TAXA_CASA) / 100) 
-                & total_vencedor = SIGMA(xx).(xx : apostas 
-                    & aposta_evento(xx) = evento_id 
-                    & aposta_palpite(xx) = resultado_vencedor | aposta_valor(xx))
-            THEN
-                /* 1. Casa recolhe a taxa */
-                saldo_casa := saldo_casa + ((arrecadacao_evento(evento_id) * TAXA_CASA) / 100) ||
-                /* 2. Evento é fechado */
-                status_evento(evento_id) := finalizado ||
-                resultado_evento(evento_id) := resultado_vencedor ||
-                
-                /* 3. Apenas carteiras de usuários com apostas vencedoras recebem fundos via lambda */
-                saldo_usuario := saldo_usuario 
-                <+ %uu.(uu : usuarios 
-                    & #ap.(ap : apostas 
-                        & aposta_usuario(ap) = uu 
-                        & aposta_evento(ap) = evento_id 
-                        & aposta_palpite(ap) = resultado_vencedor) 
-                    |saldo_usuario(uu) + ((SIGMA(ap).(ap : apostas 
-                                & aposta_usuario(ap) = uu 
-                                & aposta_evento(ap) = evento_id 
-                                & aposta_palpite(ap) = resultado_vencedor | aposta_valor(ap))
-                        ) * montante_liquido) / total_vencedor
-                ) ||
-                
-                /* 4. Vencedoras ficam "ganhas", perdedoras ficam "perdidas" */
-                status_aposta_map := status_aposta_map 
-                <+ %ap.(ap : apostas & aposta_evento(ap) = evento_id & aposta_palpite(ap) = resultado_vencedor | ganha) 
-                    <+ %ap.(ap : apostas & aposta_evento(ap) = evento_id & aposta_palpite(ap) /= resultado_vencedor | perdida)
-            END
-        ELSE
-            /* Cenário em que ninguém acertou. A casa embolsa o bolo inteiro e marca todas como perdidas. */
-            saldo_casa := saldo_casa + arrecadacao_evento(evento_id) ||
-            status_evento(evento_id) := finalizado ||
-            resultado_evento(evento_id) := resultado_vencedor ||
-            status_aposta_map := status_aposta_map <+ %ap.(ap : apostas & aposta_evento(ap) = evento_id | perdida)
-        END
+        status_evento(evento_id) := finalizado ||
+        resultado_evento(evento_id) := resultado_vencedor ||
+
+        /* Pagamento por odd salva no momento da aposta. Ex.: 130 representa odd 1.30 */
+        saldo_usuario := %uu.(uu : usuarios |
+            saldo_usuario(uu) +
+            SIGMA(ap).(
+                ap : apostas
+                & aposta_usuario(ap) = uu
+                & aposta_evento(ap) = evento_id
+                & aposta_palpite(ap) = resultado_vencedor
+                & status_aposta_map(ap) = pendente
+                | (aposta_valor(ap) * aposta_odd(ap)) / 100
+            )
+        ) ||
+
+        status_aposta_map := status_aposta_map
+            <+ %ap.(ap : apostas
+                & aposta_evento(ap) = evento_id
+                & aposta_palpite(ap) = resultado_vencedor
+                & status_aposta_map(ap) = pendente | ganha)
+            <+ %ap.(ap : apostas
+                & aposta_evento(ap) = evento_id
+                & aposta_palpite(ap) /= resultado_vencedor
+                & status_aposta_map(ap) = pendente | perdida)
     END;
 
     cancelar_evento(admin_id, evento_id) =
@@ -433,7 +446,7 @@ OPERATIONS
         & is_admin(admin_id) = TRUE 
         & evento_id : NAT 
         & evento_id : eventos 
-        & status_evento(evento_id) = aberto
+        & status_evento(evento_id) : {aberto, suspenso}
     THEN
         status_evento(evento_id) := cancelado
     END;
