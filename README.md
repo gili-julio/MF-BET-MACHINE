@@ -10,12 +10,13 @@ resultados.
 - `Apostas.mch`: máquina abstrata e regras de segurança.
 - `Apostas_Ref.ref`: primeiro refinamento, com representação concreta por
   contadores e arrays totais de tamanho limitado.
+- `Apostas_Imp.imp`: implementação B0 que utiliza máquinas básicas de arrays e
+  laços determinísticos.
 
 O refinamento substitui os conjuntos e funções de domínio variável da máquina
 abstrata por arrays definidos sobre `1..MAX_USERS`, `1..MAX_EVENTS` e
-`1..MAX_APOSTAS`. Ele ainda não é a implementação B0 necessária para geração de
-código: a etapa seguinte deverá importar máquinas básicas de arrays e converter
-a liquidação em massa em laços determinísticos.
+`1..MAX_APOSTAS`. A implementação importa `L_ARRAY1` para materializar esses
+arrays e converte a liquidação em massa em um laço determinístico.
 
 ## Modelo de estado
 
@@ -66,6 +67,9 @@ criam usuários comuns, que podem ser promovidos por um administrador ativo. O
 9. Apostas pendentes pertencem a eventos abertos, suspensos ou cancelados.
 10. Em eventos abertos ou suspensos, a arrecadação é exatamente a soma das
     apostas pendentes.
+11. Saldos e arrecadações são limitados a `SALDO_MAXIMO = 1000000`.
+12. Operações financeiras individuais são limitadas a
+    `VALOR_OPERACAO_MAXIMO = 100000`.
 
 ## Fluxos principais
 
@@ -150,6 +154,36 @@ As operações do refinamento mantêm as mesmas entradas e saídas da máquina
 abstrata. Suas cláusulas `PRE` foram omitidas: as condições de chamada são as
 estabelecidas pela operação abstrata e pelas obrigações de refinamento.
 
+## Implementação B0
+
+`Apostas_Imp.imp` refina `Apostas_Ref` e mantém um único componente principal.
+As estruturas de usuários, eventos e apostas são armazenadas em 13 instâncias
+nomeadas de `L_ARRAY1`, da biblioteca padrão do Atelier B.
+
+As operações simples são traduzidas em leituras e escritas `VAL_ARRAY` e
+`STR_ARRAY`. `finalizar_evento` percorre as apostas com `WHILE`, credita cada
+vencedor e atualiza o estado de cada aposta. O laço possui invariante de tipagem
+e variante decrescente.
+
+A finalização só pode ocorrer quando todos os saldos resultantes permanecem
+dentro de `SALDO_MAXIMO`. Os limites também garantem que multiplicações e
+somatórios financeiros permaneçam abaixo de `MAXINT`.
+
+### Operações `pode_*`
+
+Cada operação pública com pré-condição possui uma consulta booleana
+correspondente, como:
+
+- `pode_depositar`;
+- `pode_realizar_aposta`;
+- `pode_finalizar_evento`;
+- `pode_cancelar_evento`.
+
+Essas consultas verificam as regras sem alterar o estado. A futura interface
+deverá chamar primeiro `pode_*` e somente então executar a operação contratual,
+sem reimplementar regras de negócio. As consultas possuem apenas pré-condições
+de tipagem, necessárias para gerar assinaturas C concretas.
+
 ## Validação
 
 Os componentes devem ser adicionados ao mesmo projeto do Atelier B usando seus
@@ -158,18 +192,27 @@ nomes internos:
 - `Apostas_Ctx`
 - `Apostas`
 - `Apostas_Ref`
+- `Apostas_Imp`
+
+`Apostas_Imp` depende das máquinas padrão `L_ARRAY1`, `L_ARRAY1_1` e
+`BASIC_ARRAY_VAR`. Elas devem ser disponibilizadas como biblioteca do projeto
+ou adicionadas a partir da instalação do Atelier B.
 
 Na validação automática realizada com Atelier B Community Edition 24.04.2:
 
 - contexto e máquina abstrata passaram no verificador de tipos;
 - o refinamento passou no verificador de tipos;
+- a implementação passou no verificador de tipos;
+- a implementação passou integralmente no `b0check`;
 - todas as operações do refinamento possuem corpo e saídas inicializadas;
-- a inicialização concreta teve todas as suas 30 obrigações provadas;
-- o refinamento gerou 169 obrigações, das quais 102 foram provadas
-  automaticamente na força 3;
-- as 67 obrigações restantes concentram-se na preservação das projeções dos
-  arrays, nos somatórios e na liquidação em massa, exigindo lemas ou prova
-  interativa.
+- as obrigações atualizadas foram geradas para máquina, refinamento e
+  implementação;
+- a máquina gerou 508 obrigações, o refinamento 364 e a implementação 365;
+- a tentativa automática completa da implementação excedeu o tempo
+  configurado; as obrigações permanecem disponíveis para prova posterior.
+
+A tradução com `ComenCtrans` ainda não foi executada, pois geração de C e
+interface pertencem à próxima etapa do projeto.
 
 Antes da entrega, os cenários principais também devem ser animados no ProB,
 incluindo limites, revogação, cancelamento, reembolso e finalização.

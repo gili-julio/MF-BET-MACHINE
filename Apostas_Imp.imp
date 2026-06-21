@@ -1,0 +1,659 @@
+IMPLEMENTATION
+    Apostas_Imp
+REFINES
+    Apostas_Ref
+SEES
+    Apostas_Ctx
+
+CONCRETE_VARIABLES
+    imp_caixa_casa,
+    imp_qtd_usuarios,
+    imp_qtd_eventos,
+    imp_qtd_apostas
+
+IMPORTS
+    saldos_arr.L_ARRAY1(0..SALDO_MAXIMO, MAX_USERS),
+    contas_arr.L_ARRAY1(STATUS_CONTA, MAX_USERS),
+    admins_arr.L_ARRAY1(BOOL, MAX_USERS),
+    estados_eventos_arr.L_ARRAY1(STATUS_EVENTO, MAX_EVENTS),
+    arrecadacoes_arr.L_ARRAY1(0..SALDO_MAXIMO, MAX_EVENTS),
+    odds_eventos_arr.L_ARRAY1(ODD_MINIMA..ODD_MAXIMA, MAX_EVENTS),
+    resultados_arr.L_ARRAY1(OPCAO_RESULTADO, MAX_EVENTS),
+    donos_arr.L_ARRAY1(0..MAX_USERS, MAX_APOSTAS),
+    eventos_apostas_arr.L_ARRAY1(0..MAX_EVENTS, MAX_APOSTAS),
+    valores_arr.L_ARRAY1(0..VALOR_OPERACAO_MAXIMO, MAX_APOSTAS),
+    palpites_arr.L_ARRAY1(OPCAO_RESULTADO, MAX_APOSTAS),
+    odds_apostas_arr.L_ARRAY1(ODD_MINIMA..ODD_MAXIMA, MAX_APOSTAS),
+    estados_apostas_arr.L_ARRAY1(STATUS_APOSTA, MAX_APOSTAS)
+
+INVARIANT
+    imp_caixa_casa : 0..SALDO_MAXIMO &
+    imp_qtd_usuarios : 0..MAX_USERS &
+    imp_qtd_eventos : 0..MAX_EVENTS &
+    imp_qtd_apostas : 0..MAX_APOSTAS &
+
+    caixa_casa = imp_caixa_casa &
+    qtd_usuarios = imp_qtd_usuarios &
+    qtd_eventos = imp_qtd_eventos &
+    qtd_apostas = imp_qtd_apostas &
+
+    saldos_usuarios = 1..MAX_USERS <| saldos_arr.arr_vrb &
+    contas_usuarios = 1..MAX_USERS <| contas_arr.arr_vrb &
+    perfis_admin = 1..MAX_USERS <| admins_arr.arr_vrb &
+
+    estados_eventos = 1..MAX_EVENTS <| estados_eventos_arr.arr_vrb &
+    arrecadacoes_eventos = 1..MAX_EVENTS <| arrecadacoes_arr.arr_vrb &
+    odds_eventos = 1..MAX_EVENTS <| odds_eventos_arr.arr_vrb &
+    resultados_eventos = 1..MAX_EVENTS <| resultados_arr.arr_vrb &
+
+    donos_apostas = 1..MAX_APOSTAS <| donos_arr.arr_vrb &
+    eventos_apostas = 1..MAX_APOSTAS <| eventos_apostas_arr.arr_vrb &
+    valores_apostas = 1..MAX_APOSTAS <| valores_arr.arr_vrb &
+    palpites_apostas = 1..MAX_APOSTAS <| palpites_arr.arr_vrb &
+    odds_apostas = 1..MAX_APOSTAS <| odds_apostas_arr.arr_vrb &
+    estados_apostas = 1..MAX_APOSTAS <| estados_apostas_arr.arr_vrb
+
+INITIALISATION
+    imp_caixa_casa := 0;
+    imp_qtd_usuarios := 0;
+    imp_qtd_eventos := 0;
+    imp_qtd_apostas := 0;
+    saldos_arr.SET_ARRAY(0, MAX_USERS, 0);
+    contas_arr.SET_ARRAY(0, MAX_USERS, suspensa);
+    admins_arr.SET_ARRAY(0, MAX_USERS, FALSE);
+    estados_eventos_arr.SET_ARRAY(0, MAX_EVENTS, agendado);
+    arrecadacoes_arr.SET_ARRAY(0, MAX_EVENTS, 0);
+    odds_eventos_arr.SET_ARRAY(0, MAX_EVENTS, ODD_PADRAO);
+    resultados_arr.SET_ARRAY(0, MAX_EVENTS, indefinido);
+    donos_arr.SET_ARRAY(0, MAX_APOSTAS, 0);
+    eventos_apostas_arr.SET_ARRAY(0, MAX_APOSTAS, 0);
+    valores_arr.SET_ARRAY(0, MAX_APOSTAS, 0);
+    palpites_arr.SET_ARRAY(0, MAX_APOSTAS, indefinido);
+    odds_apostas_arr.SET_ARRAY(0, MAX_APOSTAS, ODD_PADRAO);
+    estados_apostas_arr.SET_ARRAY(0, MAX_APOSTAS, revogada_usuario)
+
+OPERATIONS
+
+    novo_user_id <-- cadastrar_usuario(is_admin_param) =
+    VAR novo_id IN
+        novo_id := imp_qtd_usuarios + 1;
+        saldos_arr.STR_ARRAY(novo_id, 0);
+        contas_arr.STR_ARRAY(novo_id, ativa);
+        admins_arr.STR_ARRAY(novo_id, is_admin_param);
+        novo_user_id := novo_id;
+        imp_qtd_usuarios := novo_id
+    END;
+
+    downgrade_usuario(admin_id, target_user_id) =
+        admins_arr.STR_ARRAY(target_user_id, FALSE);
+
+    upgrade_usuario(admin_id, target_user_id) =
+        admins_arr.STR_ARRAY(target_user_id, TRUE);
+
+    ativar_usuario(admin_id, target_user_id) =
+        contas_arr.STR_ARRAY(target_user_id, ativa);
+
+    colocar_conta_em_analise(admin_id, target_user_id) =
+        contas_arr.STR_ARRAY(target_user_id, sob_analise);
+
+    suspender_usuario(admin_id, target_user_id) =
+        contas_arr.STR_ARRAY(target_user_id, suspensa);
+
+    depositar(user_id, valor) =
+    VAR saldo IN
+        saldo <-- saldos_arr.VAL_ARRAY(user_id);
+        saldos_arr.STR_ARRAY(user_id, saldo + valor)
+    END;
+
+    sacar(user_id, valor) =
+    VAR saldo IN
+        saldo <-- saldos_arr.VAL_ARRAY(user_id);
+        saldos_arr.STR_ARRAY(user_id, saldo - valor)
+    END;
+
+    nova_aposta_id <-- realizar_aposta(user_id, evento_id, palpite, valor) =
+    VAR novo_id, saldo, arrecadacao, odd IN
+        novo_id := imp_qtd_apostas + 1;
+        saldo <-- saldos_arr.VAL_ARRAY(user_id);
+        arrecadacao <-- arrecadacoes_arr.VAL_ARRAY(evento_id);
+        odd <-- odds_eventos_arr.VAL_ARRAY(evento_id);
+        donos_arr.STR_ARRAY(novo_id, user_id);
+        eventos_apostas_arr.STR_ARRAY(novo_id, evento_id);
+        valores_arr.STR_ARRAY(novo_id, valor);
+        palpites_arr.STR_ARRAY(novo_id, palpite);
+        odds_apostas_arr.STR_ARRAY(novo_id, odd);
+        estados_apostas_arr.STR_ARRAY(novo_id, pendente);
+        saldos_arr.STR_ARRAY(user_id, saldo - valor);
+        arrecadacoes_arr.STR_ARRAY(evento_id, arrecadacao + valor);
+        nova_aposta_id := novo_id;
+        imp_qtd_apostas := novo_id
+    END;
+
+    revogar_aposta(user_id, aposta_id) =
+    VAR valor, evento_id, saldo, arrecadacao IN
+        valor <-- valores_arr.VAL_ARRAY(aposta_id);
+        evento_id <-- eventos_apostas_arr.VAL_ARRAY(aposta_id);
+        saldo <-- saldos_arr.VAL_ARRAY(user_id);
+        arrecadacao <-- arrecadacoes_arr.VAL_ARRAY(evento_id);
+        saldos_arr.STR_ARRAY(user_id, saldo + valor);
+        arrecadacoes_arr.STR_ARRAY(evento_id, arrecadacao - valor);
+        estados_apostas_arr.STR_ARRAY(aposta_id, revogada_usuario)
+    END;
+
+    resgatar_reembolso(user_id, aposta_id) =
+    VAR valor, saldo IN
+        valor <-- valores_arr.VAL_ARRAY(aposta_id);
+        saldo <-- saldos_arr.VAL_ARRAY(user_id);
+        saldos_arr.STR_ARRAY(user_id, saldo + valor);
+        estados_apostas_arr.STR_ARRAY(aposta_id, devolvida)
+    END;
+
+    saldo_atual <-- consultar_saldo_usuario(user_id) =
+        saldo_atual <-- saldos_arr.VAL_ARRAY(user_id);
+
+    odd_atual <-- consultar_odd_evento(evento_id) =
+        odd_atual <-- odds_eventos_arr.VAL_ARRAY(evento_id);
+
+    odd_salva <-- consultar_odd_aposta(aposta_id) =
+        odd_salva <-- odds_apostas_arr.VAL_ARRAY(aposta_id);
+
+    aportar_saldo_casa(admin_id, valor) =
+        imp_caixa_casa := imp_caixa_casa + valor;
+
+    sacar_lucro_casa(admin_id, valor) =
+        imp_caixa_casa := imp_caixa_casa - valor;
+
+    novo_evento_id <-- criar_evento(admin_id) =
+    VAR novo_id IN
+        novo_id := imp_qtd_eventos + 1;
+        estados_eventos_arr.STR_ARRAY(novo_id, agendado);
+        arrecadacoes_arr.STR_ARRAY(novo_id, 0);
+        odds_eventos_arr.STR_ARRAY(novo_id, ODD_PADRAO);
+        resultados_arr.STR_ARRAY(novo_id, indefinido);
+        novo_evento_id := novo_id;
+        imp_qtd_eventos := novo_id
+    END;
+
+    abrir_evento(admin_id, evento_id) =
+        estados_eventos_arr.STR_ARRAY(evento_id, aberto);
+
+    suspender_evento(admin_id, evento_id) =
+        estados_eventos_arr.STR_ARRAY(evento_id, suspenso);
+
+    retomar_evento(admin_id, evento_id) =
+        estados_eventos_arr.STR_ARRAY(evento_id, aberto);
+
+    alterar_odd_evento(admin_id, evento_id, nova_odd) =
+        odds_eventos_arr.STR_ARRAY(evento_id, nova_odd);
+
+    finalizar_evento(admin_id, evento_id, resultado_vencedor) =
+    VAR indice, evento_aposta, estado_aposta, palpite, dono, valor, odd,
+        saldo, premio
+    IN
+        indice := 1;
+        WHILE indice <= imp_qtd_apostas DO
+            evento_aposta <-- eventos_apostas_arr.VAL_ARRAY(indice);
+            estado_aposta <-- estados_apostas_arr.VAL_ARRAY(indice);
+            IF evento_aposta = evento_id & estado_aposta = pendente THEN
+                palpite <-- palpites_arr.VAL_ARRAY(indice);
+                IF palpite = resultado_vencedor THEN
+                    dono <-- donos_arr.VAL_ARRAY(indice);
+                    valor <-- valores_arr.VAL_ARRAY(indice);
+                    odd <-- odds_apostas_arr.VAL_ARRAY(indice);
+                    saldo <-- saldos_arr.VAL_ARRAY(dono);
+                    premio := (valor * odd) / 100;
+                    saldos_arr.STR_ARRAY(dono, saldo + premio);
+                    estados_apostas_arr.STR_ARRAY(indice, ganha)
+                ELSE
+                    estados_apostas_arr.STR_ARRAY(indice, perdida)
+                END
+            END;
+            indice := indice + 1
+        INVARIANT
+            indice : 1..imp_qtd_apostas + 1
+        VARIANT
+            imp_qtd_apostas + 1 - indice
+        END;
+        estados_eventos_arr.STR_ARRAY(evento_id, finalizado);
+        resultados_arr.STR_ARRAY(evento_id, resultado_vencedor)
+    END;
+
+    cancelar_evento(admin_id, evento_id) =
+        estados_eventos_arr.STR_ARRAY(evento_id, cancelado);
+
+    saldo_atual <-- consultar_saldo_casa(admin_id) =
+        saldo_atual := imp_caixa_casa;
+
+    permitido <-- pode_cadastrar_usuario(is_admin_param) =
+    BEGIN
+        permitido := FALSE;
+        IF imp_qtd_usuarios < MAX_USERS THEN
+            IF (imp_qtd_usuarios = 0 & is_admin_param = TRUE) or
+               (imp_qtd_usuarios /= 0 & is_admin_param = FALSE)
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_downgrade_usuario(admin_id, target_user_id) =
+    VAR admin, conta, alvo_admin, indice, qtd_admins IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           target_user_id > 0 & target_user_id <= imp_qtd_usuarios
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            alvo_admin <-- admins_arr.VAL_ARRAY(target_user_id);
+            qtd_admins := 0;
+            indice := 1;
+            WHILE indice <= imp_qtd_usuarios DO
+                VAR perfil IN
+                    perfil <-- admins_arr.VAL_ARRAY(indice);
+                    IF perfil = TRUE THEN
+                        qtd_admins := qtd_admins + 1
+                    END
+                END;
+                indice := indice + 1
+            INVARIANT
+                indice : 1..imp_qtd_usuarios + 1 &
+                qtd_admins : 0..imp_qtd_usuarios
+            VARIANT
+                imp_qtd_usuarios + 1 - indice
+            END;
+            IF admin = TRUE & conta = ativa & alvo_admin = TRUE &
+               target_user_id /= admin_id & qtd_admins >= 2
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_upgrade_usuario(admin_id, target_user_id) =
+    VAR admin, conta, alvo_admin IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           target_user_id > 0 & target_user_id <= imp_qtd_usuarios
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            alvo_admin <-- admins_arr.VAL_ARRAY(target_user_id);
+            IF admin = TRUE & conta = ativa & alvo_admin = FALSE THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_ativar_usuario(admin_id, target_user_id) =
+    VAR admin, conta, conta_alvo IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           target_user_id > 0 & target_user_id <= imp_qtd_usuarios
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            conta_alvo <-- contas_arr.VAL_ARRAY(target_user_id);
+            IF admin = TRUE & conta = ativa & conta_alvo /= ativa THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_colocar_conta_em_analise(admin_id, target_user_id) =
+    VAR admin, conta, conta_alvo IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           target_user_id > 0 & target_user_id <= imp_qtd_usuarios
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            conta_alvo <-- contas_arr.VAL_ARRAY(target_user_id);
+            IF admin = TRUE & conta = ativa & target_user_id /= admin_id &
+               conta_alvo /= sob_analise
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_suspender_usuario(admin_id, target_user_id) =
+    VAR admin, conta, conta_alvo IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           target_user_id > 0 & target_user_id <= imp_qtd_usuarios
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            conta_alvo <-- contas_arr.VAL_ARRAY(target_user_id);
+            IF admin = TRUE & conta = ativa & target_user_id /= admin_id &
+               conta_alvo /= suspensa
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_depositar(user_id, valor) =
+    VAR admin, conta, saldo, saldo_final IN
+        permitido := FALSE;
+        IF user_id > 0 & user_id <= imp_qtd_usuarios THEN
+            admin <-- admins_arr.VAL_ARRAY(user_id);
+            conta <-- contas_arr.VAL_ARRAY(user_id);
+            saldo <-- saldos_arr.VAL_ARRAY(user_id);
+            saldo_final := saldo + valor;
+            IF admin = FALSE & conta = ativa & valor > 0 &
+               valor <= VALOR_OPERACAO_MAXIMO &
+               saldo_final <= SALDO_MAXIMO
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_sacar(user_id, valor) =
+    VAR admin, conta, saldo IN
+        permitido := FALSE;
+        IF user_id > 0 & user_id <= imp_qtd_usuarios THEN
+            admin <-- admins_arr.VAL_ARRAY(user_id);
+            conta <-- contas_arr.VAL_ARRAY(user_id);
+            saldo <-- saldos_arr.VAL_ARRAY(user_id);
+            IF admin = FALSE & conta = ativa & valor > 0 &
+               valor <= VALOR_OPERACAO_MAXIMO & saldo >= valor
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_realizar_aposta(user_id, evento_id, palpite, valor) =
+    VAR admin, conta, estado, saldo, arrecadacao, nova_arrecadacao IN
+        permitido := FALSE;
+        IF user_id > 0 & user_id <= imp_qtd_usuarios &
+           evento_id > 0 & evento_id <= imp_qtd_eventos
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(user_id);
+            conta <-- contas_arr.VAL_ARRAY(user_id);
+            estado <-- estados_eventos_arr.VAL_ARRAY(evento_id);
+            saldo <-- saldos_arr.VAL_ARRAY(user_id);
+            arrecadacao <-- arrecadacoes_arr.VAL_ARRAY(evento_id);
+            nova_arrecadacao := arrecadacao + valor;
+            IF admin = FALSE & conta = ativa & estado = aberto &
+               palpite /= indefinido & valor >= APOSTA_MINIMA &
+               valor <= VALOR_OPERACAO_MAXIMO &
+               imp_qtd_apostas < MAX_APOSTAS & saldo >= valor &
+               nova_arrecadacao <= SALDO_MAXIMO
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_revogar_aposta(user_id, aposta_id) =
+    VAR admin, dono, evento_id, estado_evento, estado_aposta, saldo, valor,
+        saldo_final
+    IN
+        permitido := FALSE;
+        IF user_id > 0 & user_id <= imp_qtd_usuarios &
+           aposta_id > 0 & aposta_id <= imp_qtd_apostas
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(user_id);
+            dono <-- donos_arr.VAL_ARRAY(aposta_id);
+            evento_id <-- eventos_apostas_arr.VAL_ARRAY(aposta_id);
+            estado_evento <-- estados_eventos_arr.VAL_ARRAY(evento_id);
+            estado_aposta <-- estados_apostas_arr.VAL_ARRAY(aposta_id);
+            saldo <-- saldos_arr.VAL_ARRAY(user_id);
+            valor <-- valores_arr.VAL_ARRAY(aposta_id);
+            saldo_final := saldo + valor;
+            IF admin = FALSE & dono = user_id &
+               (estado_evento = aberto or estado_evento = suspenso) &
+               estado_aposta = pendente & saldo_final <= SALDO_MAXIMO
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_resgatar_reembolso(user_id, aposta_id) =
+    VAR admin, dono, evento_id, estado_evento, estado_aposta, saldo, valor,
+        saldo_final
+    IN
+        permitido := FALSE;
+        IF user_id > 0 & user_id <= imp_qtd_usuarios &
+           aposta_id > 0 & aposta_id <= imp_qtd_apostas
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(user_id);
+            dono <-- donos_arr.VAL_ARRAY(aposta_id);
+            evento_id <-- eventos_apostas_arr.VAL_ARRAY(aposta_id);
+            estado_evento <-- estados_eventos_arr.VAL_ARRAY(evento_id);
+            estado_aposta <-- estados_apostas_arr.VAL_ARRAY(aposta_id);
+            saldo <-- saldos_arr.VAL_ARRAY(user_id);
+            valor <-- valores_arr.VAL_ARRAY(aposta_id);
+            saldo_final := saldo + valor;
+            IF admin = FALSE & dono = user_id & estado_evento = cancelado &
+               estado_aposta = pendente & saldo_final <= SALDO_MAXIMO
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_consultar_saldo_usuario(user_id) =
+    VAR admin IN
+        permitido := FALSE;
+        IF user_id > 0 & user_id <= imp_qtd_usuarios THEN
+            admin <-- admins_arr.VAL_ARRAY(user_id);
+            IF admin = FALSE THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_consultar_odd_evento(evento_id) =
+    BEGIN
+        permitido := FALSE;
+        IF evento_id > 0 & evento_id <= imp_qtd_eventos THEN
+            permitido := TRUE
+        END
+    END;
+
+    permitido <-- pode_consultar_odd_aposta(aposta_id) =
+    BEGIN
+        permitido := FALSE;
+        IF aposta_id > 0 & aposta_id <= imp_qtd_apostas THEN
+            permitido := TRUE
+        END
+    END;
+
+    permitido <-- pode_aportar_saldo_casa(admin_id, valor) =
+    VAR admin, conta, novo_caixa IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            novo_caixa := imp_caixa_casa + valor;
+            IF admin = TRUE & conta = ativa & valor > 0 &
+               valor <= VALOR_OPERACAO_MAXIMO &
+               novo_caixa <= SALDO_MAXIMO
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_sacar_lucro_casa(admin_id, valor) =
+    VAR admin, conta IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            IF admin = TRUE & conta = ativa & valor > 0 &
+               valor <= VALOR_OPERACAO_MAXIMO & imp_caixa_casa >= valor
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_criar_evento(admin_id) =
+    VAR admin, conta IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            IF admin = TRUE & conta = ativa &
+               imp_qtd_eventos < MAX_EVENTS
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_abrir_evento(admin_id, evento_id) =
+    VAR admin, conta, estado IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           evento_id > 0 & evento_id <= imp_qtd_eventos
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            estado <-- estados_eventos_arr.VAL_ARRAY(evento_id);
+            IF admin = TRUE & conta = ativa & estado = agendado THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_suspender_evento(admin_id, evento_id) =
+    VAR admin, conta, estado IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           evento_id > 0 & evento_id <= imp_qtd_eventos
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            estado <-- estados_eventos_arr.VAL_ARRAY(evento_id);
+            IF admin = TRUE & conta = ativa & estado = aberto THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_retomar_evento(admin_id, evento_id) =
+    VAR admin, conta, estado IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           evento_id > 0 & evento_id <= imp_qtd_eventos
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            estado <-- estados_eventos_arr.VAL_ARRAY(evento_id);
+            IF admin = TRUE & conta = ativa & estado = suspenso THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_alterar_odd_evento(admin_id, evento_id, nova_odd) =
+    VAR admin, conta, estado IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           evento_id > 0 & evento_id <= imp_qtd_eventos
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            estado <-- estados_eventos_arr.VAL_ARRAY(evento_id);
+            IF admin = TRUE & conta = ativa &
+               (estado = agendado or estado = aberto or estado = suspenso) &
+               nova_odd >= ODD_MINIMA & nova_odd <= ODD_MAXIMA
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_finalizar_evento(admin_id, evento_id, resultado_vencedor) =
+    VAR admin, conta, estado_evento, usuario, aposta, total, saldo, saldo_final,
+        dono, evento_aposta, estado_aposta, palpite, valor, odd, premio
+    IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           evento_id > 0 & evento_id <= imp_qtd_eventos
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            estado_evento <-- estados_eventos_arr.VAL_ARRAY(evento_id);
+            IF admin = TRUE & conta = ativa &
+               resultado_vencedor /= indefinido & estado_evento = aberto
+            THEN
+                permitido := TRUE;
+                usuario := 1;
+                WHILE usuario <= imp_qtd_usuarios & permitido = TRUE DO
+                    total := 0;
+                    aposta := 1;
+                    WHILE aposta <= imp_qtd_apostas DO
+                        dono <-- donos_arr.VAL_ARRAY(aposta);
+                        evento_aposta <-- eventos_apostas_arr.VAL_ARRAY(aposta);
+                        estado_aposta <-- estados_apostas_arr.VAL_ARRAY(aposta);
+                        palpite <-- palpites_arr.VAL_ARRAY(aposta);
+                        IF dono = usuario & evento_aposta = evento_id &
+                           estado_aposta = pendente &
+                           palpite = resultado_vencedor
+                        THEN
+                            valor <-- valores_arr.VAL_ARRAY(aposta);
+                            odd <-- odds_apostas_arr.VAL_ARRAY(aposta);
+                            premio := (valor * odd) / 100;
+                            total := total + premio
+                        END;
+                        aposta := aposta + 1
+                    INVARIANT
+                        aposta : 1..imp_qtd_apostas + 1 &
+                        total : NAT & total <= MAXINT
+                    VARIANT
+                        imp_qtd_apostas + 1 - aposta
+                    END;
+                    saldo <-- saldos_arr.VAL_ARRAY(usuario);
+                    saldo_final := saldo + total;
+                    IF saldo_final > SALDO_MAXIMO THEN
+                        permitido := FALSE
+                    END;
+                    usuario := usuario + 1
+                INVARIANT
+                    usuario : 1..imp_qtd_usuarios + 1 &
+                    permitido : BOOL
+                VARIANT
+                    imp_qtd_usuarios + 1 - usuario
+                END
+            END
+        END
+    END;
+
+    permitido <-- pode_cancelar_evento(admin_id, evento_id) =
+    VAR admin, conta, estado IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios &
+           evento_id > 0 & evento_id <= imp_qtd_eventos
+        THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            estado <-- estados_eventos_arr.VAL_ARRAY(evento_id);
+            IF admin = TRUE & conta = ativa &
+               (estado = aberto or estado = suspenso)
+            THEN
+                permitido := TRUE
+            END
+        END
+    END;
+
+    permitido <-- pode_consultar_saldo_casa(admin_id) =
+    VAR admin, conta IN
+        permitido := FALSE;
+        IF admin_id > 0 & admin_id <= imp_qtd_usuarios THEN
+            admin <-- admins_arr.VAL_ARRAY(admin_id);
+            conta <-- contas_arr.VAL_ARRAY(admin_id);
+            IF admin = TRUE & conta = ativa THEN
+                permitido := TRUE
+            END
+        END
+    END
+
+END

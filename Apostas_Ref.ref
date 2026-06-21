@@ -26,23 +26,23 @@ VARIABLES
 
 INVARIANT
     /* Estado concreto */
-    caixa_casa : NAT &
+    caixa_casa : 0..SALDO_MAXIMO &
 
     qtd_usuarios : 0..MAX_USERS &
-    saldos_usuarios : 1..MAX_USERS --> NAT &
+    saldos_usuarios : 1..MAX_USERS --> 0..SALDO_MAXIMO &
     contas_usuarios : 1..MAX_USERS --> STATUS_CONTA &
     perfis_admin : 1..MAX_USERS --> BOOL &
 
     qtd_eventos : 0..MAX_EVENTS &
     estados_eventos : 1..MAX_EVENTS --> STATUS_EVENTO &
-    arrecadacoes_eventos : 1..MAX_EVENTS --> NAT &
+    arrecadacoes_eventos : 1..MAX_EVENTS --> 0..SALDO_MAXIMO &
     odds_eventos : 1..MAX_EVENTS --> ODD_MINIMA..ODD_MAXIMA &
     resultados_eventos : 1..MAX_EVENTS --> OPCAO_RESULTADO &
 
     qtd_apostas : 0..MAX_APOSTAS &
     donos_apostas : 1..MAX_APOSTAS --> 0..MAX_USERS &
     eventos_apostas : 1..MAX_APOSTAS --> 0..MAX_EVENTS &
-    valores_apostas : 1..MAX_APOSTAS --> NAT &
+    valores_apostas : 1..MAX_APOSTAS --> 0..VALOR_OPERACAO_MAXIMO &
     palpites_apostas : 1..MAX_APOSTAS --> OPCAO_RESULTADO &
     odds_apostas : 1..MAX_APOSTAS --> ODD_MINIMA..ODD_MAXIMA &
     estados_apostas : 1..MAX_APOSTAS --> STATUS_APOSTA &
@@ -223,6 +223,299 @@ OPERATIONS
         estados_eventos(evento_id) := cancelado;
 
     saldo_atual <-- consultar_saldo_casa(admin_id) =
-        saldo_atual := caixa_casa
+        saldo_atual := caixa_casa;
+
+    permitido <-- pode_cadastrar_usuario(is_admin_param) =
+        permitido := bool(
+            qtd_usuarios < MAX_USERS &
+            (qtd_usuarios = 0 => is_admin_param = TRUE) &
+            (qtd_usuarios /= 0 => is_admin_param = FALSE));
+
+    permitido <-- pode_downgrade_usuario(admin_id, target_user_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & target_user_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                perfis_admin(target_user_id) = TRUE &
+                target_user_id /= admin_id &
+                card((1..qtd_usuarios) /\ perfis_admin~[{TRUE}]) >= 2)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_upgrade_usuario(admin_id, target_user_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & target_user_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                perfis_admin(target_user_id) = FALSE)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_ativar_usuario(admin_id, target_user_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & target_user_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                contas_usuarios(target_user_id) /= ativa)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_colocar_conta_em_analise(admin_id, target_user_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & target_user_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                target_user_id /= admin_id &
+                contas_usuarios(target_user_id) /= sob_analise)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_suspender_usuario(admin_id, target_user_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & target_user_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                target_user_id /= admin_id &
+                contas_usuarios(target_user_id) /= suspensa)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_depositar(user_id, valor) =
+    BEGIN
+        IF user_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(user_id) = FALSE &
+                contas_usuarios(user_id) = ativa &
+                valor : NAT1 & valor <= VALOR_OPERACAO_MAXIMO &
+                saldos_usuarios(user_id) + valor <= SALDO_MAXIMO)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_sacar(user_id, valor) =
+    BEGIN
+        IF user_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(user_id) = FALSE &
+                contas_usuarios(user_id) = ativa &
+                valor : NAT1 & valor <= VALOR_OPERACAO_MAXIMO &
+                saldos_usuarios(user_id) >= valor)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_realizar_aposta(user_id, evento_id, palpite, valor) =
+    BEGIN
+        IF user_id : 1..qtd_usuarios & evento_id : 1..qtd_eventos THEN
+            permitido := bool(
+                perfis_admin(user_id) = FALSE &
+                contas_usuarios(user_id) = ativa &
+                estados_eventos(evento_id) = aberto &
+                palpite /= indefinido &
+                valor : NAT1 & valor >= APOSTA_MINIMA &
+                valor <= VALOR_OPERACAO_MAXIMO &
+                qtd_apostas < MAX_APOSTAS &
+                saldos_usuarios(user_id) >= valor &
+                arrecadacoes_eventos(evento_id) + valor <= SALDO_MAXIMO)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_revogar_aposta(user_id, aposta_id) =
+    BEGIN
+        IF user_id : 1..qtd_usuarios & aposta_id : 1..qtd_apostas THEN
+            permitido := bool(
+                perfis_admin(user_id) = FALSE &
+                donos_apostas(aposta_id) = user_id &
+                estados_eventos(eventos_apostas(aposta_id)) :
+                    {aberto, suspenso} &
+                estados_apostas(aposta_id) = pendente &
+                saldos_usuarios(user_id) + valores_apostas(aposta_id) <=
+                    SALDO_MAXIMO)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_resgatar_reembolso(user_id, aposta_id) =
+    BEGIN
+        IF user_id : 1..qtd_usuarios & aposta_id : 1..qtd_apostas THEN
+            permitido := bool(
+                perfis_admin(user_id) = FALSE &
+                donos_apostas(aposta_id) = user_id &
+                estados_eventos(eventos_apostas(aposta_id)) = cancelado &
+                estados_apostas(aposta_id) = pendente &
+                saldos_usuarios(user_id) + valores_apostas(aposta_id) <=
+                    SALDO_MAXIMO)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_consultar_saldo_usuario(user_id) =
+    BEGIN
+        IF user_id : 1..qtd_usuarios THEN
+            permitido := bool(perfis_admin(user_id) = FALSE)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_consultar_odd_evento(evento_id) =
+        permitido := bool(evento_id : 1..qtd_eventos);
+
+    permitido <-- pode_consultar_odd_aposta(aposta_id) =
+        permitido := bool(aposta_id : 1..qtd_apostas);
+
+    permitido <-- pode_aportar_saldo_casa(admin_id, valor) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                valor : NAT1 & valor <= VALOR_OPERACAO_MAXIMO &
+                caixa_casa + valor <= SALDO_MAXIMO)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_sacar_lucro_casa(admin_id, valor) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                valor : NAT1 & valor <= VALOR_OPERACAO_MAXIMO &
+                caixa_casa >= valor)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_criar_evento(admin_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                qtd_eventos < MAX_EVENTS)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_abrir_evento(admin_id, evento_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & evento_id : 1..qtd_eventos THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                estados_eventos(evento_id) = agendado)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_suspender_evento(admin_id, evento_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & evento_id : 1..qtd_eventos THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                estados_eventos(evento_id) = aberto)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_retomar_evento(admin_id, evento_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & evento_id : 1..qtd_eventos THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                estados_eventos(evento_id) = suspenso)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_alterar_odd_evento(admin_id, evento_id, nova_odd) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & evento_id : 1..qtd_eventos THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                estados_eventos(evento_id) : {agendado, aberto, suspenso} &
+                nova_odd : ODD_MINIMA..ODD_MAXIMA)
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_finalizar_evento(admin_id, evento_id, resultado_vencedor) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & evento_id : 1..qtd_eventos THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                resultado_vencedor /= indefinido &
+                estados_eventos(evento_id) = aberto &
+                !uu.(uu : 1..qtd_usuarios =>
+                    saldos_usuarios(uu) +
+                    SIGMA(ap).(
+                        ap : 1..qtd_apostas &
+                        donos_apostas(ap) = uu &
+                        eventos_apostas(ap) = evento_id &
+                        palpites_apostas(ap) = resultado_vencedor &
+                        estados_apostas(ap) = pendente |
+                        (valores_apostas(ap) * odds_apostas(ap)) / 100
+                    ) <= SALDO_MAXIMO))
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_cancelar_evento(admin_id, evento_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios & evento_id : 1..qtd_eventos THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa &
+                estados_eventos(evento_id) : {aberto, suspenso})
+        ELSE
+            permitido := FALSE
+        END
+    END;
+
+    permitido <-- pode_consultar_saldo_casa(admin_id) =
+    BEGIN
+        IF admin_id : 1..qtd_usuarios THEN
+            permitido := bool(
+                perfis_admin(admin_id) = TRUE &
+                contas_usuarios(admin_id) = ativa)
+        ELSE
+            permitido := FALSE
+        END
+    END
 
 END

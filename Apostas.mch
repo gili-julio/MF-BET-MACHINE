@@ -33,10 +33,10 @@ VARIABLES
     
 INVARIANT
     /* Tipagem Variaveis de Estado */
-    saldo_casa : NAT &
+    saldo_casa : 0..SALDO_MAXIMO &
     usuarios <: NAT1 &
     card(usuarios) <= MAX_USERS &
-    saldo_usuario : usuarios --> NAT & 
+    saldo_usuario : usuarios --> 0..SALDO_MAXIMO & 
     status_conta : usuarios --> STATUS_CONTA &
     is_admin : usuarios --> BOOL &
     (usuarios /= {} => TRUE : ran(is_admin)) &
@@ -57,7 +57,7 @@ INVARIANT
     eventos <: NAT1 &
     card(eventos) <= MAX_EVENTS &
     status_evento : eventos --> STATUS_EVENTO &
-    arrecadacao_evento : eventos --> NAT &
+    arrecadacao_evento : eventos --> 0..SALDO_MAXIMO &
     odd_evento : eventos --> ODD_MINIMA..ODD_MAXIMA &
     
     /* Tipagem do Resultado */
@@ -68,8 +68,7 @@ INVARIANT
     card(apostas) <= MAX_APOSTAS &
     aposta_usuario : apostas --> usuarios &
     aposta_evento : apostas --> eventos &
-    aposta_valor : apostas --> NAT1 &
-    !ap.(ap : apostas => aposta_valor(ap) >= APOSTA_MINIMA) &
+    aposta_valor : apostas --> APOSTA_MINIMA..VALOR_OPERACAO_MAXIMO &
     aposta_palpite : apostas --> OPCAO_RESULTADO - {indefinido} &
     aposta_odd : apostas --> ODD_MINIMA..ODD_MAXIMA &
     status_aposta_map : apostas --> STATUS_APOSTA &
@@ -224,6 +223,8 @@ OPERATIONS
         & is_admin(user_id) = FALSE 
         & valor : NAT1 
         & status_conta(user_id) = ativa
+        & valor <= VALOR_OPERACAO_MAXIMO
+        & saldo_usuario(user_id) + valor <= SALDO_MAXIMO
     THEN
         saldo_usuario(user_id) := saldo_usuario(user_id) + valor
     END;
@@ -234,6 +235,7 @@ OPERATIONS
         & user_id : usuarios 
         & is_admin(user_id) = FALSE 
         & valor : NAT1 
+        & valor <= VALOR_OPERACAO_MAXIMO
         & status_conta(user_id) = ativa 
         & saldo_usuario(user_id) >= valor
     THEN
@@ -251,11 +253,13 @@ OPERATIONS
         & palpite /= indefinido 
         & valor : NAT1 
         & valor >= APOSTA_MINIMA 
+        & valor <= VALOR_OPERACAO_MAXIMO
         & contador_aposta <= MAX_APOSTAS 
         & contador_aposta /: apostas
         & status_conta(user_id) = ativa 
         & status_evento(evento_id) = aberto 
         & saldo_usuario(user_id) >= valor
+        & arrecadacao_evento(evento_id) + valor <= SALDO_MAXIMO
     THEN 
         apostas := apostas \/ {contador_aposta} || 
         aposta_usuario(contador_aposta) := user_id || 
@@ -282,6 +286,7 @@ OPERATIONS
         & aposta_usuario(aposta_id) = user_id 
         & status_evento(aposta_evento(aposta_id)) : {aberto, suspenso}
         & status_aposta_map(aposta_id) = pendente
+        & saldo_usuario(user_id) + aposta_valor(aposta_id) <= SALDO_MAXIMO
     THEN
         saldo_usuario(user_id) := saldo_usuario(user_id) + aposta_valor(aposta_id) ||
         arrecadacao_evento(aposta_evento(aposta_id)) := arrecadacao_evento(aposta_evento(aposta_id)) - aposta_valor(aposta_id) ||
@@ -298,6 +303,7 @@ OPERATIONS
         & aposta_usuario(aposta_id) = user_id 
         & status_evento(aposta_evento(aposta_id)) = cancelado 
         & status_aposta_map(aposta_id) = pendente
+        & saldo_usuario(user_id) + aposta_valor(aposta_id) <= SALDO_MAXIMO
     THEN
         saldo_usuario(user_id) := saldo_usuario(user_id) + aposta_valor(aposta_id) ||
         status_aposta_map(aposta_id) := devolvida
@@ -337,6 +343,8 @@ OPERATIONS
         & is_admin(admin_id) = TRUE 
         & status_conta(admin_id) = ativa
         & valor : NAT1
+        & valor <= VALOR_OPERACAO_MAXIMO
+        & saldo_casa + valor <= SALDO_MAXIMO
     THEN
         saldo_casa := saldo_casa + valor
     END;
@@ -348,6 +356,7 @@ OPERATIONS
         & is_admin(admin_id) = TRUE 
         & status_conta(admin_id) = ativa
         & valor : NAT1 
+        & valor <= VALOR_OPERACAO_MAXIMO
         & saldo_casa >= valor
     THEN
         saldo_casa := saldo_casa - valor
@@ -435,6 +444,16 @@ OPERATIONS
         & resultado_vencedor : OPCAO_RESULTADO 
         & resultado_vencedor /= indefinido 
         & status_evento(evento_id) = aberto
+        & !uu.(uu : usuarios =>
+            saldo_usuario(uu) +
+            SIGMA(ap).(
+                ap : apostas
+                & aposta_usuario(ap) = uu
+                & aposta_evento(ap) = evento_id
+                & aposta_palpite(ap) = resultado_vencedor
+                & status_aposta_map(ap) = pendente
+                | (aposta_valor(ap) * aposta_odd(ap)) / 100
+            ) <= SALDO_MAXIMO)
     THEN
         status_evento(evento_id) := finalizado ||
         resultado_evento(evento_id) := resultado_vencedor ||
@@ -484,6 +503,263 @@ OPERATIONS
         & status_conta(admin_id) = ativa
     THEN 
         saldo_atual := saldo_casa 
+    END;
+
+    /* --- CONSULTAS TOTAIS PARA A FUTURA INTERFACE --- */
+
+    permitido <-- pode_cadastrar_usuario(is_admin_param) =
+    PRE is_admin_param : BOOL
+    THEN
+        permitido := bool(
+            is_admin_param : BOOL &
+            contador_usuario <= MAX_USERS &
+            contador_usuario /: usuarios &
+            (usuarios = {} => is_admin_param = TRUE) &
+            (usuarios /= {} => is_admin_param = FALSE))
+    END;
+
+    permitido <-- pode_downgrade_usuario(admin_id, target_user_id) =
+    PRE admin_id : NAT & target_user_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            target_user_id : NAT & target_user_id : usuarios &
+            is_admin(target_user_id) = TRUE & target_user_id /= admin_id &
+            card(is_admin~[{TRUE}]) >= 2)
+    END;
+
+    permitido <-- pode_upgrade_usuario(admin_id, target_user_id) =
+    PRE admin_id : NAT & target_user_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            target_user_id : NAT & target_user_id : usuarios &
+            is_admin(target_user_id) = FALSE)
+    END;
+
+    permitido <-- pode_ativar_usuario(admin_id, target_user_id) =
+    PRE admin_id : NAT & target_user_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            target_user_id : NAT & target_user_id : usuarios &
+            status_conta(target_user_id) /= ativa)
+    END;
+
+    permitido <-- pode_colocar_conta_em_analise(admin_id, target_user_id) =
+    PRE admin_id : NAT & target_user_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            target_user_id : NAT & target_user_id : usuarios &
+            target_user_id /= admin_id &
+            status_conta(target_user_id) /= sob_analise)
+    END;
+
+    permitido <-- pode_suspender_usuario(admin_id, target_user_id) =
+    PRE admin_id : NAT & target_user_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            target_user_id : NAT & target_user_id : usuarios &
+            target_user_id /= admin_id &
+            status_conta(target_user_id) /= suspensa)
+    END;
+
+    permitido <-- pode_depositar(user_id, valor) =
+    PRE user_id : NAT & valor : NAT
+    THEN
+        permitido := bool(
+            user_id : NAT & user_id : usuarios &
+            is_admin(user_id) = FALSE & status_conta(user_id) = ativa &
+            valor : NAT1 & valor <= VALOR_OPERACAO_MAXIMO &
+            saldo_usuario(user_id) + valor <= SALDO_MAXIMO)
+    END;
+
+    permitido <-- pode_sacar(user_id, valor) =
+    PRE user_id : NAT & valor : NAT
+    THEN
+        permitido := bool(
+            user_id : NAT & user_id : usuarios &
+            is_admin(user_id) = FALSE & status_conta(user_id) = ativa &
+            valor : NAT1 & valor <= VALOR_OPERACAO_MAXIMO &
+            saldo_usuario(user_id) >= valor)
+    END;
+
+    permitido <-- pode_realizar_aposta(user_id, evento_id, palpite, valor) =
+    PRE
+        user_id : NAT & evento_id : NAT &
+        palpite : OPCAO_RESULTADO & valor : NAT
+    THEN
+        permitido := bool(
+            user_id : NAT & user_id : usuarios &
+            is_admin(user_id) = FALSE & status_conta(user_id) = ativa &
+            evento_id : NAT & evento_id : eventos &
+            status_evento(evento_id) = aberto &
+            palpite : OPCAO_RESULTADO & palpite /= indefinido &
+            valor : NAT1 & valor >= APOSTA_MINIMA &
+            valor <= VALOR_OPERACAO_MAXIMO &
+            contador_aposta <= MAX_APOSTAS & contador_aposta /: apostas &
+            saldo_usuario(user_id) >= valor &
+            arrecadacao_evento(evento_id) + valor <= SALDO_MAXIMO)
+    END;
+
+    permitido <-- pode_revogar_aposta(user_id, aposta_id) =
+    PRE user_id : NAT & aposta_id : NAT
+    THEN
+        permitido := bool(
+            user_id : NAT & user_id : usuarios & is_admin(user_id) = FALSE &
+            aposta_id : NAT & aposta_id : apostas &
+            aposta_usuario(aposta_id) = user_id &
+            status_evento(aposta_evento(aposta_id)) : {aberto, suspenso} &
+            status_aposta_map(aposta_id) = pendente &
+            saldo_usuario(user_id) + aposta_valor(aposta_id) <= SALDO_MAXIMO)
+    END;
+
+    permitido <-- pode_resgatar_reembolso(user_id, aposta_id) =
+    PRE user_id : NAT & aposta_id : NAT
+    THEN
+        permitido := bool(
+            user_id : NAT & user_id : usuarios & is_admin(user_id) = FALSE &
+            aposta_id : NAT & aposta_id : apostas &
+            aposta_usuario(aposta_id) = user_id &
+            status_evento(aposta_evento(aposta_id)) = cancelado &
+            status_aposta_map(aposta_id) = pendente &
+            saldo_usuario(user_id) + aposta_valor(aposta_id) <= SALDO_MAXIMO)
+    END;
+
+    permitido <-- pode_consultar_saldo_usuario(user_id) =
+    PRE user_id : NAT
+    THEN
+        permitido := bool(
+            user_id : NAT & user_id : usuarios & is_admin(user_id) = FALSE)
+    END;
+
+    permitido <-- pode_consultar_odd_evento(evento_id) =
+    PRE evento_id : NAT
+    THEN permitido := bool(evento_id : NAT & evento_id : eventos)
+    END;
+
+    permitido <-- pode_consultar_odd_aposta(aposta_id) =
+    PRE aposta_id : NAT
+    THEN permitido := bool(aposta_id : NAT & aposta_id : apostas)
+    END;
+
+    permitido <-- pode_aportar_saldo_casa(admin_id, valor) =
+    PRE admin_id : NAT & valor : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            valor : NAT1 & valor <= VALOR_OPERACAO_MAXIMO &
+            saldo_casa + valor <= SALDO_MAXIMO)
+    END;
+
+    permitido <-- pode_sacar_lucro_casa(admin_id, valor) =
+    PRE admin_id : NAT & valor : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            valor : NAT1 & valor <= VALOR_OPERACAO_MAXIMO &
+            saldo_casa >= valor)
+    END;
+
+    permitido <-- pode_criar_evento(admin_id) =
+    PRE admin_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            contador_evento <= MAX_EVENTS & contador_evento /: eventos)
+    END;
+
+    permitido <-- pode_abrir_evento(admin_id, evento_id) =
+    PRE admin_id : NAT & evento_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            evento_id : NAT & evento_id : eventos &
+            status_evento(evento_id) = agendado)
+    END;
+
+    permitido <-- pode_suspender_evento(admin_id, evento_id) =
+    PRE admin_id : NAT & evento_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            evento_id : NAT & evento_id : eventos &
+            status_evento(evento_id) = aberto)
+    END;
+
+    permitido <-- pode_retomar_evento(admin_id, evento_id) =
+    PRE admin_id : NAT & evento_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            evento_id : NAT & evento_id : eventos &
+            status_evento(evento_id) = suspenso)
+    END;
+
+    permitido <-- pode_alterar_odd_evento(admin_id, evento_id, nova_odd) =
+    PRE admin_id : NAT & evento_id : NAT & nova_odd : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            evento_id : NAT & evento_id : eventos &
+            status_evento(evento_id) : {agendado, aberto, suspenso} &
+            nova_odd : ODD_MINIMA..ODD_MAXIMA)
+    END;
+
+    permitido <-- pode_finalizar_evento(admin_id, evento_id, resultado_vencedor) =
+    PRE
+        admin_id : NAT & evento_id : NAT &
+        resultado_vencedor : OPCAO_RESULTADO
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            evento_id : NAT & evento_id : eventos &
+            resultado_vencedor : OPCAO_RESULTADO &
+            resultado_vencedor /= indefinido &
+            status_evento(evento_id) = aberto &
+            !uu.(uu : usuarios =>
+                saldo_usuario(uu) +
+                SIGMA(ap).(
+                    ap : apostas &
+                    aposta_usuario(ap) = uu &
+                    aposta_evento(ap) = evento_id &
+                    aposta_palpite(ap) = resultado_vencedor &
+                    status_aposta_map(ap) = pendente |
+                    (aposta_valor(ap) * aposta_odd(ap)) / 100
+                ) <= SALDO_MAXIMO))
+    END;
+
+    permitido <-- pode_cancelar_evento(admin_id, evento_id) =
+    PRE admin_id : NAT & evento_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa &
+            evento_id : NAT & evento_id : eventos &
+            status_evento(evento_id) : {aberto, suspenso})
+    END;
+
+    permitido <-- pode_consultar_saldo_casa(admin_id) =
+    PRE admin_id : NAT
+    THEN
+        permitido := bool(
+            admin_id : NAT & admin_id : usuarios &
+            is_admin(admin_id) = TRUE & status_conta(admin_id) = ativa)
     END
 
 END
