@@ -1,0 +1,114 @@
+REFINEMENT
+    Apostas_Ref
+REFINES
+    Apostas
+SEES
+    Apostas_Ctx
+
+VARIABLES
+    saldo_casa,
+    usuarios,
+    saldo_usuario,
+    is_admin,
+    eventos,
+    status_evento,
+    arrecadacao_evento,
+    odd_evento,
+    apostas,
+    aposta_usuario,
+    aposta_evento,
+    aposta_valor,
+    aposta_palpite,
+    aposta_odd,
+    status_aposta_map,
+    status_conta,
+    resultado_evento,
+    contador_aposta,
+    contador_evento,
+    contador_usuario
+    
+INVARIANT
+    saldo_casa : NAT &
+    usuarios <: NAT &
+    card(usuarios) <= MAX_USERS &
+    saldo_usuario : usuarios --> NAT & 
+    status_conta : usuarios --> STATUS_CONTA &
+    is_admin : usuarios --> BOOL &
+
+    contador_evento : NAT1 & 
+    contador_evento <= MAX_EVENTS + 1 &
+    
+    contador_aposta : NAT1 & 
+    contador_aposta <= MAX_APOSTAS + 1 &
+    
+    contador_usuario : NAT1 & 
+    contador_usuario <= MAX_USERS + 1 &
+
+    eventos <: NAT &
+    card(eventos) <= MAX_EVENTS &
+    status_evento : eventos --> STATUS_EVENTO &
+    arrecadacao_evento : eventos --> NAT &
+    odd_evento : eventos --> ODD_MINIMA..ODD_MAXIMA &
+    
+    resultado_evento : eventos --> OPCAO_RESULTADO &
+
+    apostas <: NAT &
+    card(apostas) <= MAX_APOSTAS &
+    aposta_usuario : apostas --> usuarios &
+    aposta_evento : apostas --> eventos &
+    aposta_valor : apostas --> NAT1 & 
+    aposta_palpite : apostas --> OPCAO_RESULTADO &
+    aposta_odd : apostas --> ODD_MINIMA..ODD_MAXIMA &
+    status_aposta_map : apostas --> STATUS_APOSTA
+
+OPERATIONS
+
+    novo_user_id <-- cadastrar_usuario(is_admin_param) = skip;
+
+    downgrade_usuario(admin_id, target_user_id) = skip;
+
+    upgrade_usuario(admin_id, target_user_id) = skip;
+    
+    ativar_usuario(admin_id, target_user_id) = skip;
+
+    colocar_conta_em_analise(admin_id, target_user_id) = skip;
+
+    suspender_usuario(admin_id, target_user_id) = skip;
+
+    depositar(user_id, valor) = skip;
+
+    sacar(user_id, valor) = skip;
+
+    nova_aposta_id <-- realizar_aposta(user_id, evento_id, palpite, valor) = skip;
+    
+    revogar_aposta(user_id, aposta_id) = skip;
+
+    resgatar_reembolso(user_id, aposta_id) = skip;
+
+    saldo_atual <-- consultar_saldo_usuario(user_id) = skip;
+
+    odd_atual <-- consultar_odd_evento(evento_id) = skip;
+
+    odd_salva <-- consultar_odd_aposta(aposta_id) = skip;
+
+    aportar_saldo_casa(admin_id, valor) = skip;
+
+    sacar_lucro_casa(admin_id, valor) = skip;
+
+    novo_evento_id <-- criar_evento(admin_id) = skip;
+
+    abrir_evento(admin_id, evento_id) = skip;
+
+    suspender_evento(admin_id, evento_id) = skip;
+
+    retomar_evento(admin_id, evento_id) = skip;
+
+    alterar_odd_evento(admin_id, evento_id, nova_odd) = skip;
+
+    finalizar_evento(admin_id, evento_id, resultado_vencedor) = skip;
+
+    cancelar_evento(admin_id, evento_id) = skip;
+
+    saldo_atual <-- consultar_saldo_casa(admin_id) = skip
+
+END
