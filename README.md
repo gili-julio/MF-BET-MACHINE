@@ -1,94 +1,175 @@
 # MF-BET-MACHINE
-The bet machine write in B for discipline Métodos Formais
 
-# 📘 Documentação Técnica: Máquina Principal (`Apostas.mch`)
+Especificação formal, em Método B, de uma casa de apostas com usuários, eventos,
+odds fixadas no momento da aposta, cancelamentos, reembolsos e liquidação de
+resultados.
 
-Este documento detalha o estado, as regras de segurança e as operações do sistema formal de Casa de Apostas desenvolvido em Método B. A arquitetura adota o paradigma de **Design by Contract (Projeto por Contrato)** e implementa **Controle de Acesso Baseado em Funções (RBAC)**, garantindo a integridade matemática do estado e a segregação de privilégios estrutural.
+## Componentes
 
----
+- `Apostas_Ctx.mch`: conjuntos enumerados, limites e constantes do domínio.
+- `Apostas.mch`: máquina abstrata e regras de segurança.
+- `Apostas_Ref.ref`: primeiro refinamento, com representação concreta por
+  contadores e arrays totais de tamanho limitado.
 
-## 1. Variáveis de Estado
+O refinamento substitui os conjuntos e funções de domínio variável da máquina
+abstrata por arrays definidos sobre `1..MAX_USERS`, `1..MAX_EVENTS` e
+`1..MAX_APOSTAS`. Ele ainda não é a implementação B0 necessária para geração de
+código: a etapa seguinte deverá importar máquinas básicas de arrays e converter
+a liquidação em massa em laços determinísticos.
 
-As variáveis representam os dados que o sistema armazena e manipula na memória durante o seu ciclo de vida.
+## Modelo de estado
 
-| Variável | Tipo Matemático | Descrição |
-| :--- | :--- | :--- |
-| `saldo_casa` | Escalar | Lucro total da plataforma acumulado através da retenção de taxas. |
-| `usuarios` | Conjunto | IDs numéricos de todos os usuários cadastrados. |
-| `saldo_usuario` | Função (`-->`) | Mapeia o ID de cada usuário ao valor atual da sua carteira. |
-| `is_admin` | Função (`-->`) | Mapeia se o usuário é um Administrador (`TRUE`) ou Comum (`FALSE`). |
-| `status_conta` | Função (`-->`) | Mapeia o ID do usuário ao seu nível de permissão (`ativa`, `sob_analise`, `suspensa`). |
-| `eventos` | Conjunto | IDs numéricos de todos os eventos esportivos criados. |
-| `status_evento` | Função (`-->`) | Mapeia cada evento ao seu estado (`agendado`, `aberto`, `suspenso`, `finalizado`, `cancelado`). |
-| `arrecadacao_evento` | Função (`-->`) | O "Bolo" (montante total) arrecadado pelas apostas em um evento. |
-| `resultado_evento` | Função (`-->`) | Mapeia cada evento finalizado ao seu resultado vencedor. |
-| `apostas` | Conjunto | IDs numéricos de todos os bilhetes de aposta registrados. |
-| `aposta_usuario` | Função (`-->`) | Vincula o ID de uma aposta ao ID do usuário dono. |
-| `aposta_evento` | Função (`-->`) | Vincula o ID de uma aposta ao ID do evento alvo. |
-| `aposta_valor` | Função (`-->`) | Quantia financeira investida no bilhete. |
-| `aposta_palpite` | Função (`-->`) | Escolha de resultado feita na aposta (vitória, empate, etc.). |
-| `status_aposta_map`| Função (`-->`) | Estado do bilhete (`pendente`, `ganha`, `perdida`, `devolvida`, `revogada_usuario`). |
+### Usuários
 
-*(Nota: Variáveis de contadores auto-incrementais garantem a exclusividade de IDs gerados dinamicamente).*
+- `usuarios`: identificadores cadastrados.
+- `saldo_usuario`: saldo disponível de cada usuário.
+- `status_conta`: conta `ativa`, `sob_analise` ou `suspensa`.
+- `is_admin`: perfil administrativo.
+- `contador_usuario`: próximo identificador.
 
----
+O primeiro usuário cadastrado deve ser administrador. Cadastros posteriores
+criam usuários comuns, que podem ser promovidos por um administrador ativo. O
+último administrador não pode ser rebaixado.
 
-## 2. Invariantes de Segurança (Regras de Negócio Críticas)
+### Eventos
 
-Os invariantes são as propriedades matemáticas blindadas do sistema. O Atelier-B atesta que o software nunca entrará em um estado que quebre essas leis:
+- `eventos`: identificadores dos eventos.
+- `status_evento`: `agendado`, `aberto`, `suspenso`, `finalizado` ou `cancelado`.
+- `resultado_evento`: resultado válido ou `indefinido`.
+- `odd_evento`: odd atualmente oferecida.
+- `arrecadacao_evento`: soma das apostas pendentes enquanto o evento estiver
+  aberto ou suspenso.
+- `contador_evento`: próximo identificador.
 
-1. **Solvência da Casa de Apostas (`saldo_casa : NAT`):** Prova matematicamente que a plataforma nunca operará no vermelho.
-2. **Consistência Financeira (`saldo_usuario : usuarios --> NAT`):** É impossível que um usuário possua saldo negativo.
-3. **Regra de Vitória e Derrota:** Uma aposta `ganha` ou `perdida` deve estar matematicamente alinhada com o `resultado_evento`.
-4. **Integridade Temporal:** O resultado de um evento que não está `finalizado` deve ser rigorosamente `indefinido`. Uma aposta só pode ser `pendente` se o evento estiver `agendado` ou `aberto`.
-5. **Completude do Resultado:** Todo evento `finalizado` obrigatoriamente possui um resultado válido.
-6. **Coerência de Resolução:** Apostas só assumem o estado de `ganha` ou `perdida` se o evento já foi encerrado.
-7. **Coerência de Estorno:** Uma aposta só pode ser marcada como `devolvida` se o evento correspondente foi `cancelado`.
-8. **Lastro Financeiro Totalizador (Prova de Ouro):** Enquanto o evento estiver aberto ou suspenso, a `arrecadacao_evento` é exatamente igual ao somatório (`SIGMA`) de todas as apostas pendentes vinculadas a ele. Nenhum centavo é criado ou destruído.
+### Apostas
 
----
+- `apostas`: identificadores das apostas.
+- `aposta_usuario` e `aposta_evento`: proprietário e evento associado.
+- `aposta_valor` e `aposta_palpite`: valor e resultado escolhido.
+- `aposta_odd`: odd salva no instante da aposta.
+- `status_aposta_map`: `pendente`, `ganha`, `perdida`, `devolvida` ou
+  `revogada_usuario`.
+- `contador_aposta`: próximo identificador.
 
-## 3. Operações do Sistema
+## Regras garantidas pelos invariantes
 
-As operações alteram o estado caso as restrições da cláusula `PRE` (incluindo o papel do usuário) sejam plenamente satisfeitas.
+1. Os conjuntos de IDs são exatamente os intervalos já alocados pelos contadores.
+2. Saldos de usuários e da casa nunca são negativos.
+3. Sempre existe pelo menos um administrador após o primeiro cadastro.
+4. Toda aposta respeita o valor mínimo e possui palpite definido.
+5. Apostas ganhas têm palpite igual ao resultado; apostas perdidas têm palpite
+   diferente.
+6. Eventos não finalizados possuem resultado `indefinido`; eventos finalizados
+   possuem resultado definido.
+7. Apostas ganhas ou perdidas pertencem a eventos finalizados.
+8. Apostas devolvidas pertencem a eventos cancelados.
+9. Apostas pendentes pertencem a eventos abertos, suspensos ou cancelados.
+10. Em eventos abertos ou suspensos, a arrecadação é exatamente a soma das
+    apostas pendentes.
 
-### 👤 Gestão de Usuários (Administradores)
-| Operação | Parâmetros | Descrição |
-| :--- | :--- | :--- |
-| `cadastrar_usuario` | `is_admin_param` | Cria um usuário, define seu perfil (`TRUE` para Admin, `FALSE` para Comum) e retorna o ID. |
-| `downgrade_usuario` | `admin_id, target_user_id` | Rebaixa um Administrador para Usuário Comum. Um Admin não pode rebaixar a si mesmo. |
-| `upgrade_usuario` | `admin_id, target_user_id` | Promove um Usuário Comum a Administrador. |
-| `ativar_usuario` | `admin_id, target_user_id` | Restaura a conta para `ativa`, liberando fluxos de caixa e apostas. |
-| `colocar_conta_em_analise`| `admin_id, target_user_id` | Altera a conta para `sob_analise` para investigar transações atípicas. |
-| `suspender_usuario` | `admin_id, target_user_id` | Congela a conta. Impede interações com eventos e saques. |
+## Fluxos principais
 
-### 🎰 Operações do Apostador (Usuários Comuns)
-*Todas as operações deste bloco exigem que o usuário seja dono da carteira/aposta, possua conta `ativa` e `is_admin = FALSE`.*
+### Cadastro e administração
 
-| Operação | Parâmetros | Descrição |
-| :--- | :--- | :--- |
-| `depositar` | `user_id, valor` | Adiciona fundos à carteira do apostador. |
-| `sacar` | `user_id, valor` | Deduz fundos da carteira. Exige saldo suficiente. |
-| `realizar_aposta` | `user_id, evento_id, palpite, valor` | Vincula a aposta, debita do usuário e soma ao "Bolo" do evento. |
-| `revogar_aposta` | `user_id, aposta_id` | Direito de arrependimento antes do evento iniciar. Estorna os fundos e deduz do bolo do evento. |
-| `resgatar_reembolso`| `user_id, aposta_id` | **Modelo Pull:** O usuário resgata o valor apostado de volta à carteira caso o evento tenha sido cancelado pela casa. |
-| `consultar_saldo_usuario`| `user_id` | Retorna o saldo disponível na carteira. |
+- `cadastrar_usuario`: cria o primeiro administrador ou um usuário comum.
+- `upgrade_usuario` e `downgrade_usuario`: alteram o perfil sem permitir a
+  remoção do último administrador.
+- `ativar_usuario`, `colocar_conta_em_analise` e `suspender_usuario`: alteram o
+  estado da conta. Um administrador não pode suspender ou colocar a própria
+  conta em análise.
 
-### 🏢 Operações da Plataforma (Administradores)
-*Todas as operações deste bloco exigem identificação e credencial `is_admin = TRUE`.*
+Operações administrativas exigem administrador com conta ativa.
 
-| Operação | Parâmetros | Descrição |
-| :--- | :--- | :--- |
-| `aportar_saldo_casa` | `admin_id, valor` | Injeta capital diretamente no cofre da casa. |
-| `sacar_lucro_casa` | `admin_id, valor` | Retira lucros acumulados do `saldo_casa`. |
-| `criar_evento` | `admin_id` | Registra um evento `agendado`, zera o bolo e retorna o ID. |
-| `abrir_evento` | `admin_id, evento_id` | Habilita o recebimento de apostas no evento. |
-| `suspender_evento` | `admin_id, evento_id` | Bloqueia temporariamente um evento `aberto` (ex: revisão do VAR). |
-| `retomar_evento` | `admin_id, evento_id` | Desbloqueia um evento `suspenso`. |
-| `cancelar_evento` | `admin_id, evento_id` | Aborta o evento, marcando-o como `cancelado` para habilitar os estornos dos usuários. |
-| `consultar_saldo_casa` | `admin_id` | Consulta o saldo do cofre da plataforma. |
+### Operações do apostador
 
-### ⚡ Liquidação Automatizada de Prêmios
-| Operação | Parâmetros | Descrição |
-| :--- | :--- | :--- |
-| `finalizar_evento` | `admin_id, evento_id, resultado_vencedor` | Encerra o evento. O rateio do bolo é calculado internamente pelo sistema via quantificador `SIGMA`. **Pagamento em Massa:** A plataforma distribui automaticamente os lucros diretamente nas carteiras das apostas vencedoras via Função Lambda (`<+` e `%uu`), eliminando a necessidade de os usuários solicitarem saque de prêmios. Em caso de "Zebra" (nenhum ganhador), a casa retém o bolo total. |
+- `depositar` e `sacar`: alteram a carteira de um usuário comum ativo.
+- `realizar_aposta`: exige evento aberto, saldo suficiente, valor mínimo e salva
+  a odd corrente.
+- `revogar_aposta`: estorna uma aposta pendente durante evento aberto ou
+  suspenso.
+- `resgatar_reembolso`: devolve uma aposta pendente quando o evento foi
+  cancelado.
+- `consultar_saldo_usuario`, `consultar_odd_evento` e `consultar_odd_aposta`:
+  consultas sem alteração de estado.
+
+### Operações sobre eventos
+
+- `criar_evento`: cria evento agendado com odd padrão.
+- `abrir_evento`, `suspender_evento` e `retomar_evento`: controlam a recepção de
+  apostas.
+- `alterar_odd_evento`: altera a odd para apostas futuras; apostas existentes
+  mantêm sua odd salva.
+- `cancelar_evento`: habilita reembolsos individuais.
+- `finalizar_evento`: define o resultado, classifica apostas pendentes e credita
+  automaticamente os vencedores.
+
+O pagamento utiliza aritmética inteira:
+
+```text
+premio = (valor_apostado * odd_salva) / 100
+```
+
+Assim, `130` representa odd `1.30` e eventuais frações são truncadas.
+
+## Abstração financeira da casa
+
+`saldo_casa` é um caixa administrativo independente. Nesta versão:
+
+- apostas não entram no saldo da casa;
+- prêmios não são descontados do saldo da casa;
+- apostas perdidas não são transferidas para o saldo da casa;
+- não existe taxa da casa.
+
+Logo, o modelo verifica a liquidação das carteiras e apostas, mas não modela
+solvência ou lucro real da plataforma. Essa é uma limitação deliberada do escopo
+atual.
+
+## Refinamento concreto
+
+O refinamento utiliza nomes próprios para distinguir a representação concreta
+do estado abstrato:
+
+- `qtd_usuarios`, `qtd_eventos` e `qtd_apostas` armazenam quantos
+  elementos de cada array estão em uso;
+- arrays de usuários guardam saldo, estado da conta e perfil administrativo;
+- arrays de eventos guardam estado, arrecadação, odd e resultado;
+- arrays de apostas guardam usuário, evento, valor, palpite, odd e estado.
+
+As posições acima dos contadores recebem valores padrão e não pertencem ao
+estado abstrato observável. Os invariantes de ligação fazem essa projeção, por
+exemplo:
+
+```text
+usuarios = 1..qtd_usuarios
+saldo_usuario = usuarios <| saldos_usuarios
+eventos = 1..qtd_eventos
+apostas = 1..qtd_apostas
+```
+
+As operações do refinamento mantêm as mesmas entradas e saídas da máquina
+abstrata. Suas cláusulas `PRE` foram omitidas: as condições de chamada são as
+estabelecidas pela operação abstrata e pelas obrigações de refinamento.
+
+## Validação
+
+Os componentes devem ser adicionados ao mesmo projeto do Atelier B usando seus
+nomes internos:
+
+- `Apostas_Ctx`
+- `Apostas`
+- `Apostas_Ref`
+
+Na validação automática realizada com Atelier B Community Edition 24.04.2:
+
+- contexto e máquina abstrata passaram no verificador de tipos;
+- o refinamento passou no verificador de tipos;
+- todas as operações do refinamento possuem corpo e saídas inicializadas;
+- a inicialização concreta teve todas as suas 30 obrigações provadas;
+- o refinamento gerou 169 obrigações, das quais 102 foram provadas
+  automaticamente na força 3;
+- as 67 obrigações restantes concentram-se na preservação das projeções dos
+  arrays, nos somatórios e na liquidação em massa, exigindo lemas ou prova
+  interativa.
+
+Antes da entrega, os cenários principais também devem ser animados no ProB,
+incluindo limites, revogação, cancelamento, reembolso e finalização.

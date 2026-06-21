@@ -34,23 +34,27 @@ VARIABLES
 INVARIANT
     /* Tipagem Variaveis de Estado */
     saldo_casa : NAT &
-    usuarios <: NAT &
+    usuarios <: NAT1 &
     card(usuarios) <= MAX_USERS &
     saldo_usuario : usuarios --> NAT & 
     status_conta : usuarios --> STATUS_CONTA &
     is_admin : usuarios --> BOOL &
+    (usuarios /= {} => TRUE : ran(is_admin)) &
 
-    contador_evento : NAT1 & 
+    contador_evento : NAT1 &
     contador_evento <= MAX_EVENTS + 1 &
+    eventos = 1..(contador_evento - 1) &
     
     contador_aposta : NAT1 & 
     contador_aposta <= MAX_APOSTAS + 1 &
+    apostas = 1..(contador_aposta - 1) &
     
     contador_usuario : NAT1 & 
     contador_usuario <= MAX_USERS + 1 &
+    usuarios = 1..(contador_usuario - 1) &
 
     /* Tipagem Variaveis de Eventos */
-    eventos <: NAT &
+    eventos <: NAT1 &
     card(eventos) <= MAX_EVENTS &
     status_evento : eventos --> STATUS_EVENTO &
     arrecadacao_evento : eventos --> NAT &
@@ -60,12 +64,13 @@ INVARIANT
     resultado_evento : eventos --> OPCAO_RESULTADO &
 
     /* Tipagem das Apostas */
-    apostas <: NAT &
+    apostas <: NAT1 &
     card(apostas) <= MAX_APOSTAS &
     aposta_usuario : apostas --> usuarios &
     aposta_evento : apostas --> eventos &
-    aposta_valor : apostas --> NAT1 & 
-    aposta_palpite : apostas --> OPCAO_RESULTADO &
+    aposta_valor : apostas --> NAT1 &
+    !ap.(ap : apostas => aposta_valor(ap) >= APOSTA_MINIMA) &
+    aposta_palpite : apostas --> OPCAO_RESULTADO - {indefinido} &
     aposta_odd : apostas --> ODD_MINIMA..ODD_MAXIMA &
     status_aposta_map : apostas --> STATUS_APOSTA &
     
@@ -128,7 +133,10 @@ OPERATIONS
     novo_user_id <-- cadastrar_usuario(is_admin_param) = 
     PRE 
         contador_usuario <= MAX_USERS &
-        is_admin_param : BOOL
+        contador_usuario /: usuarios &
+        is_admin_param : BOOL &
+        (usuarios = {} => is_admin_param = TRUE) &
+        (usuarios /= {} => is_admin_param = FALSE)
     THEN 
         usuarios := usuarios \/ {contador_usuario} || 
         saldo_usuario(contador_usuario) := 0 || 
@@ -143,10 +151,12 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & target_user_id : NAT 
         & target_user_id : usuarios 
         & is_admin(target_user_id) = TRUE 
         & target_user_id /= admin_id /* Um admin nao pode rebaixar a si mesmo */
+        & card(is_admin~[{TRUE}]) >= 2
     THEN
         is_admin(target_user_id) := FALSE
     END;
@@ -156,6 +166,7 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & target_user_id : NAT 
         & target_user_id : usuarios 
         & is_admin(target_user_id) = FALSE
@@ -168,6 +179,7 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & target_user_id : NAT 
         & target_user_id : usuarios 
         & status_conta(target_user_id) /= ativa
@@ -180,8 +192,10 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & target_user_id : NAT 
         & target_user_id : usuarios 
+        & target_user_id /= admin_id
         & status_conta(target_user_id) /= sob_analise
     THEN
         status_conta(target_user_id) := sob_analise
@@ -192,8 +206,10 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & target_user_id : NAT 
         & target_user_id : usuarios 
+        & target_user_id /= admin_id
         & status_conta(target_user_id) /= suspensa
     THEN
         status_conta(target_user_id) := suspensa
@@ -208,7 +224,6 @@ OPERATIONS
         & is_admin(user_id) = FALSE 
         & valor : NAT1 
         & status_conta(user_id) = ativa
-        & saldo_usuario(user_id) + valor : NAT
     THEN
         saldo_usuario(user_id) := saldo_usuario(user_id) + valor
     END;
@@ -237,6 +252,7 @@ OPERATIONS
         & valor : NAT1 
         & valor >= APOSTA_MINIMA 
         & contador_aposta <= MAX_APOSTAS 
+        & contador_aposta /: apostas
         & status_conta(user_id) = ativa 
         & status_evento(evento_id) = aberto 
         & saldo_usuario(user_id) >= valor
@@ -319,8 +335,8 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & valor : NAT1
-        & saldo_casa + valor : NAT
     THEN
         saldo_casa := saldo_casa + valor
     END;
@@ -330,6 +346,7 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & valor : NAT1 
         & saldo_casa >= valor
     THEN
@@ -341,7 +358,9 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & contador_evento <= MAX_EVENTS
+        & contador_evento /: eventos
     THEN 
         eventos := eventos \/ {contador_evento} || 
         status_evento(contador_evento) := agendado || 
@@ -357,6 +376,7 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & evento_id : NAT 
         & evento_id : eventos 
         & status_evento(evento_id) = agendado
@@ -369,6 +389,7 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & evento_id : NAT 
         & evento_id : eventos 
         & status_evento(evento_id) = aberto
@@ -381,6 +402,7 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & evento_id : NAT 
         & evento_id : eventos 
         & status_evento(evento_id) = suspenso
@@ -393,6 +415,7 @@ OPERATIONS
         admin_id : NAT
         & admin_id : usuarios
         & is_admin(admin_id) = TRUE
+        & status_conta(admin_id) = ativa
         & evento_id : NAT
         & evento_id : eventos
         & status_evento(evento_id) : {agendado, aberto, suspenso}
@@ -406,6 +429,7 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & evento_id : NAT 
         & evento_id : eventos 
         & resultado_vencedor : OPCAO_RESULTADO 
@@ -444,6 +468,7 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE 
+        & status_conta(admin_id) = ativa
         & evento_id : NAT 
         & evento_id : eventos 
         & status_evento(evento_id) : {aberto, suspenso}
@@ -456,6 +481,7 @@ OPERATIONS
         admin_id : NAT 
         & admin_id : usuarios 
         & is_admin(admin_id) = TRUE
+        & status_conta(admin_id) = ativa
     THEN 
         saldo_atual := saldo_casa 
     END

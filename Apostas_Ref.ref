@@ -1,0 +1,228 @@
+REFINEMENT
+    Apostas_Ref
+REFINES
+    Apostas
+SEES
+    Apostas_Ctx
+
+VARIABLES
+    caixa_casa,
+    qtd_usuarios,
+    saldos_usuarios,
+    contas_usuarios,
+    perfis_admin,
+    qtd_eventos,
+    estados_eventos,
+    arrecadacoes_eventos,
+    odds_eventos,
+    resultados_eventos,
+    qtd_apostas,
+    donos_apostas,
+    eventos_apostas,
+    valores_apostas,
+    palpites_apostas,
+    odds_apostas,
+    estados_apostas
+
+INVARIANT
+    /* Estado concreto */
+    caixa_casa : NAT &
+
+    qtd_usuarios : 0..MAX_USERS &
+    saldos_usuarios : 1..MAX_USERS --> NAT &
+    contas_usuarios : 1..MAX_USERS --> STATUS_CONTA &
+    perfis_admin : 1..MAX_USERS --> BOOL &
+
+    qtd_eventos : 0..MAX_EVENTS &
+    estados_eventos : 1..MAX_EVENTS --> STATUS_EVENTO &
+    arrecadacoes_eventos : 1..MAX_EVENTS --> NAT &
+    odds_eventos : 1..MAX_EVENTS --> ODD_MINIMA..ODD_MAXIMA &
+    resultados_eventos : 1..MAX_EVENTS --> OPCAO_RESULTADO &
+
+    qtd_apostas : 0..MAX_APOSTAS &
+    donos_apostas : 1..MAX_APOSTAS --> 0..MAX_USERS &
+    eventos_apostas : 1..MAX_APOSTAS --> 0..MAX_EVENTS &
+    valores_apostas : 1..MAX_APOSTAS --> NAT &
+    palpites_apostas : 1..MAX_APOSTAS --> OPCAO_RESULTADO &
+    odds_apostas : 1..MAX_APOSTAS --> ODD_MINIMA..ODD_MAXIMA &
+    estados_apostas : 1..MAX_APOSTAS --> STATUS_APOSTA &
+
+    /* Invariantes de ligacao */
+    saldo_casa = caixa_casa &
+
+    contador_usuario = qtd_usuarios + 1 &
+    usuarios = 1..qtd_usuarios &
+    saldo_usuario = usuarios <| saldos_usuarios &
+    status_conta = usuarios <| contas_usuarios &
+    is_admin = usuarios <| perfis_admin &
+
+    contador_evento = qtd_eventos + 1 &
+    eventos = 1..qtd_eventos &
+    status_evento = eventos <| estados_eventos &
+    arrecadacao_evento = eventos <| arrecadacoes_eventos &
+    odd_evento = eventos <| odds_eventos &
+    resultado_evento = eventos <| resultados_eventos &
+
+    contador_aposta = qtd_apostas + 1 &
+    apostas = 1..qtd_apostas &
+    aposta_usuario = apostas <| donos_apostas &
+    aposta_evento = apostas <| eventos_apostas &
+    aposta_valor = apostas <| valores_apostas &
+    aposta_palpite = apostas <| palpites_apostas &
+    aposta_odd = apostas <| odds_apostas &
+    status_aposta_map = apostas <| estados_apostas
+
+INITIALISATION
+    caixa_casa := 0 ||
+    qtd_usuarios := 0 ||
+    saldos_usuarios := %ii.(ii : 1..MAX_USERS | 0) ||
+    contas_usuarios := %ii.(ii : 1..MAX_USERS | suspensa) ||
+    perfis_admin := %ii.(ii : 1..MAX_USERS | FALSE) ||
+    qtd_eventos := 0 ||
+    estados_eventos := %ii.(ii : 1..MAX_EVENTS | agendado) ||
+    arrecadacoes_eventos := %ii.(ii : 1..MAX_EVENTS | 0) ||
+    odds_eventos := %ii.(ii : 1..MAX_EVENTS | ODD_PADRAO) ||
+    resultados_eventos := %ii.(ii : 1..MAX_EVENTS | indefinido) ||
+    qtd_apostas := 0 ||
+    donos_apostas := %ii.(ii : 1..MAX_APOSTAS | 0) ||
+    eventos_apostas := %ii.(ii : 1..MAX_APOSTAS | 0) ||
+    valores_apostas := %ii.(ii : 1..MAX_APOSTAS | 0) ||
+    palpites_apostas := %ii.(ii : 1..MAX_APOSTAS | indefinido) ||
+    odds_apostas := %ii.(ii : 1..MAX_APOSTAS | ODD_PADRAO) ||
+    estados_apostas := %ii.(ii : 1..MAX_APOSTAS | revogada_usuario)
+
+OPERATIONS
+
+    novo_user_id <-- cadastrar_usuario(is_admin_param) =
+    BEGIN
+        saldos_usuarios(qtd_usuarios + 1) := 0 ||
+        contas_usuarios(qtd_usuarios + 1) := ativa ||
+        perfis_admin(qtd_usuarios + 1) := is_admin_param ||
+        novo_user_id := qtd_usuarios + 1 ||
+        qtd_usuarios := qtd_usuarios + 1
+    END;
+
+    downgrade_usuario(admin_id, target_user_id) =
+        perfis_admin(target_user_id) := FALSE;
+
+    upgrade_usuario(admin_id, target_user_id) =
+        perfis_admin(target_user_id) := TRUE;
+
+    ativar_usuario(admin_id, target_user_id) =
+        contas_usuarios(target_user_id) := ativa;
+
+    colocar_conta_em_analise(admin_id, target_user_id) =
+        contas_usuarios(target_user_id) := sob_analise;
+
+    suspender_usuario(admin_id, target_user_id) =
+        contas_usuarios(target_user_id) := suspensa;
+
+    depositar(user_id, valor) =
+        saldos_usuarios(user_id) := saldos_usuarios(user_id) + valor;
+
+    sacar(user_id, valor) =
+        saldos_usuarios(user_id) := saldos_usuarios(user_id) - valor;
+
+    nova_aposta_id <-- realizar_aposta(user_id, evento_id, palpite, valor) =
+    BEGIN
+        donos_apostas(qtd_apostas + 1) := user_id ||
+        eventos_apostas(qtd_apostas + 1) := evento_id ||
+        valores_apostas(qtd_apostas + 1) := valor ||
+        palpites_apostas(qtd_apostas + 1) := palpite ||
+        odds_apostas(qtd_apostas + 1) := odds_eventos(evento_id) ||
+        estados_apostas(qtd_apostas + 1) := pendente ||
+        saldos_usuarios(user_id) := saldos_usuarios(user_id) - valor ||
+        arrecadacoes_eventos(evento_id) :=
+            arrecadacoes_eventos(evento_id) + valor ||
+        nova_aposta_id := qtd_apostas + 1 ||
+        qtd_apostas := qtd_apostas + 1
+    END;
+
+    revogar_aposta(user_id, aposta_id) =
+    BEGIN
+        saldos_usuarios(user_id) :=
+            saldos_usuarios(user_id) + valores_apostas(aposta_id) ||
+        arrecadacoes_eventos(eventos_apostas(aposta_id)) :=
+            arrecadacoes_eventos(eventos_apostas(aposta_id)) -
+            valores_apostas(aposta_id) ||
+        estados_apostas(aposta_id) := revogada_usuario
+    END;
+
+    resgatar_reembolso(user_id, aposta_id) =
+    BEGIN
+        saldos_usuarios(user_id) :=
+            saldos_usuarios(user_id) + valores_apostas(aposta_id) ||
+        estados_apostas(aposta_id) := devolvida
+    END;
+
+    saldo_atual <-- consultar_saldo_usuario(user_id) =
+        saldo_atual := saldos_usuarios(user_id);
+
+    odd_atual <-- consultar_odd_evento(evento_id) =
+        odd_atual := odds_eventos(evento_id);
+
+    odd_salva <-- consultar_odd_aposta(aposta_id) =
+        odd_salva := odds_apostas(aposta_id);
+
+    aportar_saldo_casa(admin_id, valor) =
+        caixa_casa := caixa_casa + valor;
+
+    sacar_lucro_casa(admin_id, valor) =
+        caixa_casa := caixa_casa - valor;
+
+    novo_evento_id <-- criar_evento(admin_id) =
+    BEGIN
+        estados_eventos(qtd_eventos + 1) := agendado ||
+        arrecadacoes_eventos(qtd_eventos + 1) := 0 ||
+        odds_eventos(qtd_eventos + 1) := ODD_PADRAO ||
+        resultados_eventos(qtd_eventos + 1) := indefinido ||
+        novo_evento_id := qtd_eventos + 1 ||
+        qtd_eventos := qtd_eventos + 1
+    END;
+
+    abrir_evento(admin_id, evento_id) =
+        estados_eventos(evento_id) := aberto;
+
+    suspender_evento(admin_id, evento_id) =
+        estados_eventos(evento_id) := suspenso;
+
+    retomar_evento(admin_id, evento_id) =
+        estados_eventos(evento_id) := aberto;
+
+    alterar_odd_evento(admin_id, evento_id, nova_odd) =
+        odds_eventos(evento_id) := nova_odd;
+
+    finalizar_evento(admin_id, evento_id, resultado_vencedor) =
+    BEGIN
+        estados_eventos(evento_id) := finalizado ||
+        resultados_eventos(evento_id) := resultado_vencedor ||
+        saldos_usuarios :=
+            %uu.(uu : 1..MAX_USERS |
+                saldos_usuarios(uu) +
+                SIGMA(ap).(
+                    ap : 1..qtd_apostas &
+                    donos_apostas(ap) = uu &
+                    eventos_apostas(ap) = evento_id &
+                    palpites_apostas(ap) = resultado_vencedor &
+                    estados_apostas(ap) = pendente |
+                    (valores_apostas(ap) * odds_apostas(ap)) / 100
+                )
+            ) ||
+        estados_apostas := estados_apostas
+            <+ %ap.(ap : 1..qtd_apostas &
+                eventos_apostas(ap) = evento_id &
+                palpites_apostas(ap) = resultado_vencedor &
+                estados_apostas(ap) = pendente | ganha)
+            <+ %ap.(ap : 1..qtd_apostas &
+                eventos_apostas(ap) = evento_id &
+                palpites_apostas(ap) /= resultado_vencedor &
+                estados_apostas(ap) = pendente | perdida)
+    END;
+
+    cancelar_evento(admin_id, evento_id) =
+        estados_eventos(evento_id) := cancelado;
+
+    saldo_atual <-- consultar_saldo_casa(admin_id) =
+        saldo_atual := caixa_casa
+
+END

@@ -23,7 +23,6 @@ CONSTANTS
     MAX_USERS,
     MAX_EVENTS,
     MAX_APOSTAS,
-    TAXA_CASA,
     APOSTA_MINIMA,
     ODD_PADRAO,
     ODD_MINIMA,
@@ -34,7 +33,6 @@ PROPERTIES
     MAX_USERS : NAT1 & MAX_USERS = 5 & 
     MAX_EVENTS : NAT1 & MAX_EVENTS = 5 & 
     MAX_APOSTAS : NAT1 & MAX_APOSTAS = 10 & 
-    TAXA_CASA : NAT & TAXA_CASA = 10 & 
     APOSTA_MINIMA : NAT1 & APOSTA_MINIMA = 3 &
 
     /* Odds representadas como inteiro: 130 = 1.30, 170 = 1.70 */
