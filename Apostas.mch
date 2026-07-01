@@ -1,8 +1,3 @@
-/* Apostas
- * Author: Superframe Force
- * Creation date: 01/05/2026
- * Ajustado para sistema de odds
- */
 MACHINE
     Apostas
 
@@ -332,6 +327,93 @@ OPERATIONS
         & aposta_id : apostas
     THEN
         odd_salva := aposta_odd(aposta_id)
+    END;
+
+    total_usuarios <-- consultar_qtd_usuarios =
+    BEGIN
+        total_usuarios := contador_usuario - 1
+    END;
+
+    total_eventos <-- consultar_qtd_eventos =
+    BEGIN
+        total_eventos := contador_evento - 1
+    END;
+
+    total_apostas <-- consultar_qtd_apostas =
+    BEGIN
+        total_apostas := contador_aposta - 1
+    END;
+
+    estado_conta <-- consultar_status_conta(user_id) =
+    PRE
+        user_id : NAT
+        & user_id : usuarios
+    THEN
+        estado_conta := status_conta(user_id)
+    END;
+
+    admin_flag <-- consultar_is_admin(user_id) =
+    PRE
+        user_id : NAT
+        & user_id : usuarios
+    THEN
+        admin_flag := is_admin(user_id)
+    END;
+
+    estado_evento <-- consultar_status_evento(evento_id) =
+    PRE
+        evento_id : NAT
+        & evento_id : eventos
+    THEN
+        estado_evento := status_evento(evento_id)
+    END;
+
+    resultado <-- consultar_resultado_evento(evento_id) =
+    PRE
+        evento_id : NAT
+        & evento_id : eventos
+    THEN
+        resultado := resultado_evento(evento_id)
+    END;
+
+    estado_aposta <-- consultar_status_aposta(aposta_id) =
+    PRE
+        aposta_id : NAT
+        & aposta_id : apostas
+    THEN
+        estado_aposta := status_aposta_map(aposta_id)
+    END;
+
+    dono <-- consultar_dono_aposta(aposta_id) =
+    PRE
+        aposta_id : NAT
+        & aposta_id : apostas
+    THEN
+        dono := id(1..MAX_USERS)(aposta_usuario(aposta_id))
+    END;
+
+    evento <-- consultar_evento_aposta(aposta_id) =
+    PRE
+        aposta_id : NAT
+        & aposta_id : apostas
+    THEN
+        evento := id(1..MAX_EVENTS)(aposta_evento(aposta_id))
+    END;
+
+    valor_apostado <-- consultar_valor_aposta(aposta_id) =
+    PRE
+        aposta_id : NAT
+        & aposta_id : apostas
+    THEN
+        valor_apostado := aposta_valor(aposta_id)
+    END;
+
+    palpite <-- consultar_palpite_aposta(aposta_id) =
+    PRE
+        aposta_id : NAT
+        & aposta_id : apostas
+    THEN
+        palpite := aposta_palpite(aposta_id)
     END;
 
     /* --- OPERACOES DO ADMIN --- */

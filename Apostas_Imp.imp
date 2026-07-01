@@ -157,6 +157,42 @@ OPERATIONS
     odd_salva <-- consultar_odd_aposta(aposta_id) =
         odd_salva <-- odds_apostas_arr.VAL_ARRAY(aposta_id);
 
+    total_usuarios <-- consultar_qtd_usuarios =
+        total_usuarios := imp_qtd_usuarios;
+
+    total_eventos <-- consultar_qtd_eventos =
+        total_eventos := imp_qtd_eventos;
+
+    total_apostas <-- consultar_qtd_apostas =
+        total_apostas := imp_qtd_apostas;
+
+    estado_conta <-- consultar_status_conta(user_id) =
+        estado_conta <-- contas_arr.VAL_ARRAY(user_id);
+
+    admin_flag <-- consultar_is_admin(user_id) =
+        admin_flag <-- admins_arr.VAL_ARRAY(user_id);
+
+    estado_evento <-- consultar_status_evento(evento_id) =
+        estado_evento <-- estados_eventos_arr.VAL_ARRAY(evento_id);
+
+    resultado <-- consultar_resultado_evento(evento_id) =
+        resultado <-- resultados_arr.VAL_ARRAY(evento_id);
+
+    estado_aposta <-- consultar_status_aposta(aposta_id) =
+        estado_aposta <-- estados_apostas_arr.VAL_ARRAY(aposta_id);
+
+    dono <-- consultar_dono_aposta(aposta_id) =
+        dono <-- donos_arr.VAL_ARRAY(aposta_id);
+
+    evento <-- consultar_evento_aposta(aposta_id) =
+        evento <-- eventos_apostas_arr.VAL_ARRAY(aposta_id);
+
+    valor_apostado <-- consultar_valor_aposta(aposta_id) =
+        valor_apostado <-- valores_arr.VAL_ARRAY(aposta_id);
+
+    palpite <-- consultar_palpite_aposta(aposta_id) =
+        palpite <-- palpites_arr.VAL_ARRAY(aposta_id);
+
     aportar_saldo_casa(admin_id, valor) =
         imp_caixa_casa := imp_caixa_casa + valor;
 

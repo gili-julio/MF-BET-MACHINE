@@ -93,8 +93,9 @@ Operações administrativas exigem administrador com conta ativa.
   suspenso.
 - `resgatar_reembolso`: devolve uma aposta pendente quando o evento foi
   cancelado.
-- `consultar_saldo_usuario`, `consultar_odd_evento` e `consultar_odd_aposta`:
-  consultas sem alteração de estado.
+- `consultar_saldo_usuario`, `consultar_odd_evento`, `consultar_odd_aposta` e
+  demais `consultar_*`: consultas sem alteração de estado para apoiar a futura
+  interface.
 
 ### Operações sobre eventos
 
@@ -114,6 +115,19 @@ premio = (valor_apostado * odd_salva) / 100
 ```
 
 Assim, `130` representa odd `1.30` e eventuais frações são truncadas.
+
+### Resumo das operações e condições principais
+
+| Grupo | Operações | Quem chama | Condição principal |
+| --- | --- | --- | --- |
+| Cadastro e perfis | `cadastrar_usuario`, `upgrade_usuario`, `downgrade_usuario` | sistema/admin | limite de usuários, primeiro usuário admin, admin ativo |
+| Conta de usuário | `ativar_usuario`, `colocar_conta_em_analise`, `suspender_usuario` | admin | admin ativo e conta alvo existente |
+| Carteira | `depositar`, `sacar` | usuário comum | conta ativa, valor válido e saldo/limite suficiente |
+| Apostas | `realizar_aposta`, `revogar_aposta`, `resgatar_reembolso` | usuário comum | evento/conta/aposta em estado compatível |
+| Eventos | `criar_evento`, `abrir_evento`, `suspender_evento`, `retomar_evento`, `alterar_odd_evento`, `finalizar_evento`, `cancelar_evento` | admin | admin ativo e transição válida do evento |
+| Caixa da casa | `aportar_saldo_casa`, `sacar_lucro_casa`, `consultar_saldo_casa` | admin | admin ativo e limite financeiro respeitado |
+| Consultas | `consultar_*` | interface | identificador existente quando a consulta recebe ID |
+| Verificações | `pode_*` | interface | retornam `TRUE` quando a operação contratual pode ser chamada |
 
 ## Abstração financeira da casa
 
@@ -184,19 +198,30 @@ deverá chamar primeiro `pode_*` e somente então executar a operação contratu
 sem reimplementar regras de negócio. As consultas possuem apenas pré-condições
 de tipagem, necessárias para gerar assinaturas C concretas.
 
+As operações `consultar_qtd_usuarios`, `consultar_qtd_eventos` e
+`consultar_qtd_apostas` permitem que a interface percorra os intervalos de IDs
+válidos sem conhecer diretamente os contadores internos. As demais consultas de
+estado retornam dados já modelados na máquina, como perfil administrativo,
+estado da conta, estado do evento, resultado e dados da aposta.
+
 ## Validação
 
 Os componentes devem ser adicionados ao mesmo projeto do Atelier B usando seus
-nomes internos:
+nomes internos. Ordem recomendada para carregar e verificar:
 
+- `BASIC_ARRAY_VAR`
+- `L_ARRAY1`
+- `L_ARRAY1_1`
 - `Apostas_Ctx`
 - `Apostas`
 - `Apostas_Ref`
 - `Apostas_Imp`
 
 `Apostas_Imp` depende das máquinas padrão `L_ARRAY1`, `L_ARRAY1_1` e
-`BASIC_ARRAY_VAR`. Elas devem ser disponibilizadas como biblioteca do projeto
-ou adicionadas a partir da instalação do Atelier B.
+`BASIC_ARRAY_VAR`. Essas três máquinas foram adicionadas ao repositório para
+que o Atelier B consiga carregar a implementação diretamente, sem exigir ajuste
+manual do caminho de bibliotecas da instalação local. Elas são dependências
+técnicas da implementação B0, não parte do domínio da casa de apostas.
 
 Na validação automática realizada com Atelier B Community Edition 24.04.2:
 
@@ -205,11 +230,10 @@ Na validação automática realizada com Atelier B Community Edition 24.04.2:
 - a implementação passou no verificador de tipos;
 - a implementação passou integralmente no `b0check`;
 - todas as operações do refinamento possuem corpo e saídas inicializadas;
-- as obrigações atualizadas foram geradas para máquina, refinamento e
-  implementação;
-- a máquina gerou 508 obrigações, o refinamento 364 e a implementação 365;
-- a tentativa automática completa da implementação excedeu o tempo
-  configurado; as obrigações permanecem disponíveis para prova posterior.
+- após a inclusão das novas consultas, as obrigações de prova devem ser
+  regeradas no Atelier B antes da entrega;
+- a prova automática completa não foi executada nesta rodada; as obrigações
+  permanecem disponíveis para prova posterior.
 
 A tradução com `ComenCtrans` ainda não foi executada, pois geração de C e
 interface pertencem à próxima etapa do projeto.

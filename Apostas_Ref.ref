@@ -164,6 +164,42 @@ OPERATIONS
     odd_salva <-- consultar_odd_aposta(aposta_id) =
         odd_salva := odds_apostas(aposta_id);
 
+    total_usuarios <-- consultar_qtd_usuarios =
+        total_usuarios := qtd_usuarios;
+
+    total_eventos <-- consultar_qtd_eventos =
+        total_eventos := qtd_eventos;
+
+    total_apostas <-- consultar_qtd_apostas =
+        total_apostas := qtd_apostas;
+
+    estado_conta <-- consultar_status_conta(user_id) =
+        estado_conta := contas_usuarios(user_id);
+
+    admin_flag <-- consultar_is_admin(user_id) =
+        admin_flag := perfis_admin(user_id);
+
+    estado_evento <-- consultar_status_evento(evento_id) =
+        estado_evento := estados_eventos(evento_id);
+
+    resultado <-- consultar_resultado_evento(evento_id) =
+        resultado := resultados_eventos(evento_id);
+
+    estado_aposta <-- consultar_status_aposta(aposta_id) =
+        estado_aposta := estados_apostas(aposta_id);
+
+    dono <-- consultar_dono_aposta(aposta_id) =
+        dono := donos_apostas(aposta_id);
+
+    evento <-- consultar_evento_aposta(aposta_id) =
+        evento := eventos_apostas(aposta_id);
+
+    valor_apostado <-- consultar_valor_aposta(aposta_id) =
+        valor_apostado := valores_apostas(aposta_id);
+
+    palpite <-- consultar_palpite_aposta(aposta_id) =
+        palpite := palpites_apostas(aposta_id);
+
     aportar_saldo_casa(admin_id, valor) =
         caixa_casa := caixa_casa + valor;
 
