@@ -93,6 +93,8 @@ INITIALISATION
 
 OPERATIONS
 
+    /* CADASTRO E ADMINISTRACAO */
+
     novo_user_id <-- cadastrar_usuario(is_admin_param) =
     BEGIN
         saldos_usuarios(qtd_usuarios + 1) := 0 ||
@@ -117,11 +119,15 @@ OPERATIONS
     suspender_usuario(admin_id, target_user_id) =
         contas_usuarios(target_user_id) := suspensa;
 
+    /* CARTEIRA DO USUARIO */
+
     depositar(user_id, valor) =
         saldos_usuarios(user_id) := saldos_usuarios(user_id) + valor;
 
     sacar(user_id, valor) =
         saldos_usuarios(user_id) := saldos_usuarios(user_id) - valor;
+
+    /* APOSTAS */
 
     nova_aposta_id <-- realizar_aposta(user_id, evento_id, palpite, valor) =
     BEGIN
@@ -154,6 +160,8 @@ OPERATIONS
             saldos_usuarios(user_id) + valores_apostas(aposta_id) ||
         estados_apostas(aposta_id) := devolvida
     END;
+
+    /* CONSULTAS */
 
     saldo_atual <-- consultar_saldo_usuario(user_id) =
         saldo_atual := saldos_usuarios(user_id);
@@ -200,11 +208,15 @@ OPERATIONS
     palpite <-- consultar_palpite_aposta(aposta_id) =
         palpite := palpites_apostas(aposta_id);
 
+    /* CAIXA DA CASA */
+
     aportar_saldo_casa(admin_id, valor) =
         caixa_casa := caixa_casa + valor;
 
     sacar_lucro_casa(admin_id, valor) =
         caixa_casa := caixa_casa - valor;
+
+    /* EVENTOS */
 
     novo_evento_id <-- criar_evento(admin_id) =
     BEGIN
@@ -260,6 +272,8 @@ OPERATIONS
 
     saldo_atual <-- consultar_saldo_casa(admin_id) =
         saldo_atual := caixa_casa;
+
+    /* VERIFICACOES PARA INTERFACE */
 
     permitido <-- pode_cadastrar_usuario(is_admin_param) =
         permitido := bool(

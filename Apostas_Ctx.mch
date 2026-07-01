@@ -1,8 +1,3 @@
-/* Apostas_Ctx
- * Author: Superframe Force
- * Creation date: 01/05/2026
- * Ajustado para sistema de odds
- */
 MACHINE
     Apostas_Ctx
 

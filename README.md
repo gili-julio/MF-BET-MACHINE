@@ -10,15 +10,31 @@ resultados.
 - `Apostas.mch`: máquina abstrata e regras de segurança.
 - `Apostas_Ref.ref`: primeiro refinamento, com representação concreta por
   contadores e arrays totais de tamanho limitado.
-- `Apostas_Imp.imp`: implementação B0 que utiliza máquinas básicas de arrays e
-  laços determinísticos.
+- `Apostas_Imp.imp`: implementação B0 com arrays concretos diretos e laços
+  determinísticos.
 
 O refinamento substitui os conjuntos e funções de domínio variável da máquina
 abstrata por arrays definidos sobre `1..MAX_USERS`, `1..MAX_EVENTS` e
-`1..MAX_APOSTAS`. A implementação importa `L_ARRAY1` para materializar esses
-arrays e converte a liquidação em massa em um laço determinístico.
+`1..MAX_APOSTAS`. A implementação materializa esses arrays como variáveis
+concretas totais sobre intervalos fixos e converte a liquidação em massa em um
+laço determinístico.
 
 ## Modelo de estado
+
+### Decisão sobre identificadores
+
+Usuários, eventos e apostas usam identificadores contíguos:
+
+```text
+usuarios = 1..contador_usuario
+eventos = 1..contador_evento
+apostas = 1..contador_aposta
+```
+
+O modelo não remove fisicamente esses elementos. Em vez disso, usa estados de
+domínio, como conta `suspensa`, evento `cancelado` e aposta `revogada_usuario`
+ou `devolvida`. Essa decisão simplifica o refinamento, evita buracos nos arrays
+concretos e mantém a geração automática de C mais direta.
 
 ### Usuários
 
@@ -147,8 +163,8 @@ atual.
 O refinamento utiliza nomes próprios para distinguir a representação concreta
 do estado abstrato:
 
-- `qtd_usuarios`, `qtd_eventos` e `qtd_apostas` armazenam quantos
-  elementos de cada array estão em uso;
+- `qtd_usuarios`, `qtd_eventos` e `qtd_apostas` armazenam quantos elementos de
+  cada array estão em uso;
 - arrays de usuários guardam saldo, estado da conta e perfil administrativo;
 - arrays de eventos guardam estado, arrecadação, odd e resultado;
 - arrays de apostas guardam usuário, evento, valor, palpite, odd e estado.
@@ -171,13 +187,14 @@ estabelecidas pela operação abstrata e pelas obrigações de refinamento.
 ## Implementação B0
 
 `Apostas_Imp.imp` refina `Apostas_Ref` e mantém um único componente principal.
-As estruturas de usuários, eventos e apostas são armazenadas em 13 instâncias
-nomeadas de `L_ARRAY1`, da biblioteca padrão do Atelier B.
+As estruturas de usuários, eventos e apostas são armazenadas em 13 arrays
+concretos diretos, tipados como funções totais sobre intervalos fixos:
+`0..MAX_USERS`, `0..MAX_EVENTS` e `0..MAX_APOSTAS`.
 
-As operações simples são traduzidas em leituras e escritas `VAL_ARRAY` e
-`STR_ARRAY`. `finalizar_evento` percorre as apostas com `WHILE`, credita cada
-vencedor e atualiza o estado de cada aposta. O laço possui invariante de tipagem
-e variante decrescente.
+As operações simples são traduzidas em leituras `array(indice)` e escritas
+`array(indice) := valor`. `finalizar_evento` percorre as apostas com `WHILE`,
+credita cada vencedor e atualiza o estado de cada aposta. O laço possui
+invariante de tipagem e variante decrescente.
 
 A finalização só pode ocorrer quando todos os saldos resultantes permanecem
 dentro de `SALDO_MAXIMO`. Os limites também garantem que multiplicações e
@@ -209,19 +226,14 @@ estado da conta, estado do evento, resultado e dados da aposta.
 Os componentes devem ser adicionados ao mesmo projeto do Atelier B usando seus
 nomes internos. Ordem recomendada para carregar e verificar:
 
-- `BASIC_ARRAY_VAR`
-- `L_ARRAY1`
-- `L_ARRAY1_1`
 - `Apostas_Ctx`
 - `Apostas`
 - `Apostas_Ref`
 - `Apostas_Imp`
 
-`Apostas_Imp` depende das máquinas padrão `L_ARRAY1`, `L_ARRAY1_1` e
-`BASIC_ARRAY_VAR`. Essas três máquinas foram adicionadas ao repositório para
-que o Atelier B consiga carregar a implementação diretamente, sem exigir ajuste
-manual do caminho de bibliotecas da instalação local. Elas são dependências
-técnicas da implementação B0, não parte do domínio da casa de apostas.
+`Apostas_Imp` não depende de máquinas auxiliares de array. Isso evita problema
+de caminho de biblioteca e evita a limitação do tradutor C com importações
+renomeadas.
 
 Na validação automática realizada com Atelier B Community Edition 24.04.2:
 
@@ -229,14 +241,16 @@ Na validação automática realizada com Atelier B Community Edition 24.04.2:
 - o refinamento passou no verificador de tipos;
 - a implementação passou no verificador de tipos;
 - a implementação passou integralmente no `b0check`;
+- a tradução C com `ComenCtrans Apostas_Imp C9X` foi validada após a troca para
+  arrays concretos diretos;
 - todas as operações do refinamento possuem corpo e saídas inicializadas;
-- após a inclusão das novas consultas, as obrigações de prova devem ser
-  regeradas no Atelier B antes da entrega;
+- as obrigações de prova foram geradas com `po <componente> 0`;
 - a prova automática completa não foi executada nesta rodada; as obrigações
   permanecem disponíveis para prova posterior.
 
-A tradução com `ComenCtrans` ainda não foi executada, pois geração de C e
-interface pertencem à próxima etapa do projeto.
+A geração automática de C já é viável a partir de `Apostas_Imp`. A interface
+manual ainda pertence à próxima etapa do projeto e deve acessar apenas os
+headers gerados pelo Atelier B.
 
 Antes da entrega, os cenários principais também devem ser animados no ProB,
 incluindo limites, revogação, cancelamento, reembolso e finalização.
