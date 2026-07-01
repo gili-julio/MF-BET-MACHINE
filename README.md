@@ -257,5 +257,39 @@ A geração automática de C já é viável a partir de `Apostas_Ctx_i` e
 `Apostas_Imp`. A interface manual deve acessar apenas os headers gerados pelo
 Atelier B.
 
+## Interface manual em C
+
+`interface.c` é uma interface de terminal simples. Ela não acessa variáveis
+internas do código gerado; usa apenas os headers gerados pelo Atelier B:
+
+- `Apostas_Ctx.h`
+- `Apostas.h`
+
+Para compilar, mantenha na mesma pasta:
+
+- `interface.c`
+- `Apostas_Ctx.h`
+- `Apostas_Ctx_i.c`
+- `Apostas.h`
+- `Apostas_Imp.c`
+
+Com GCC/MinGW, o comando esperado é:
+
+```bash
+gcc -std=c99 -Wall -Wextra -o mf-bet interface.c Apostas_Imp.c Apostas_Ctx_i.c
+```
+
+Depois execute:
+
+```bash
+./mf-bet
+```
+
+No Windows, dependendo do shell:
+
+```powershell
+.\mf-bet.exe
+```
+
 Antes da entrega, os cenários principais também devem ser animados no ProB,
 incluindo limites, revogação, cancelamento, reembolso e finalização.
