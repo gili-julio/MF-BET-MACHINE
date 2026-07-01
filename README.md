@@ -7,6 +7,8 @@ resultados.
 ## Componentes
 
 - `Apostas_Ctx.mch`: conjuntos enumerados, limites e constantes do domínio.
+- `Apostas_Ctx_i.imp`: implementação do contexto para geração dos tipos e
+  constantes em C.
 - `Apostas.mch`: máquina abstrata e regras de segurança.
 - `Apostas_Ref.ref`: primeiro refinamento, com representação concreta por
   contadores e arrays totais de tamanho limitado.
@@ -227,13 +229,15 @@ Os componentes devem ser adicionados ao mesmo projeto do Atelier B usando seus
 nomes internos. Ordem recomendada para carregar e verificar:
 
 - `Apostas_Ctx`
+- `Apostas_Ctx_i`
 - `Apostas`
 - `Apostas_Ref`
 - `Apostas_Imp`
 
-`Apostas_Imp` não depende de máquinas auxiliares de array. Isso evita problema
-de caminho de biblioteca e evita a limitação do tradutor C com importações
-renomeadas.
+`Apostas_Ctx_i` deve ser traduzida para C junto com `Apostas_Imp`, pois o header
+gerado de `Apostas_Imp` inclui `Apostas_Ctx.h`. `Apostas_Imp` não depende de
+máquinas auxiliares de array. Isso evita problema de caminho de biblioteca e
+evita a limitação do tradutor C com importações renomeadas.
 
 Na validação automática realizada com Atelier B Community Edition 24.04.2:
 
@@ -241,16 +245,17 @@ Na validação automática realizada com Atelier B Community Edition 24.04.2:
 - o refinamento passou no verificador de tipos;
 - a implementação passou no verificador de tipos;
 - a implementação passou integralmente no `b0check`;
-- a tradução C com `ComenCtrans Apostas_Imp C9X` foi validada após a troca para
-  arrays concretos diretos;
+- a implementação do contexto passou no verificador de tipos e no `b0check`;
+- a tradução C com `ComenCtrans Apostas_Ctx_i C9X` e
+  `ComenCtrans Apostas_Imp C9X` foi validada;
 - todas as operações do refinamento possuem corpo e saídas inicializadas;
 - as obrigações de prova foram geradas com `po <componente> 0`;
 - a prova automática completa não foi executada nesta rodada; as obrigações
   permanecem disponíveis para prova posterior.
 
-A geração automática de C já é viável a partir de `Apostas_Imp`. A interface
-manual ainda pertence à próxima etapa do projeto e deve acessar apenas os
-headers gerados pelo Atelier B.
+A geração automática de C já é viável a partir de `Apostas_Ctx_i` e
+`Apostas_Imp`. A interface manual deve acessar apenas os headers gerados pelo
+Atelier B.
 
 Antes da entrega, os cenários principais também devem ser animados no ProB,
 incluindo limites, revogação, cancelamento, reembolso e finalização.
